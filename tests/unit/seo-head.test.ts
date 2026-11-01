@@ -41,3 +41,24 @@ describe('SEO head: favicon and logo', () => {
     expect(sizes).toContain(48);
   });
 });
+
+// og:image must point at a real file: a missing one falls through to the SPA and serves HTML (audit 2026-11-01).
+describe('SEO head: social preview image', () => {
+  const jpegSize = (b: Buffer): [number, number] => {
+    expect(b.readUInt16BE(0)).toBe(0xffd8);
+    for (let i = 2; i < b.length; ) {
+      const marker = b.readUInt16BE(i);
+      if (marker >= 0xffc0 && marker <= 0xffc3) return [b.readUInt16BE(i + 7), b.readUInt16BE(i + 5)];
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+    throw new Error('no SOF marker');
+  };
+
+  it('og:image is a 1200x630 JPEG in public/', () => {
+    const url = html.match(/<meta property="og:image" content="([^"]+)"/)?.[1];
+    expect(url).toBeDefined();
+    const { host, pathname } = new URL(url!);
+    expect(host).toBe('jatimetri.belajarcarabelajar.com');
+    expect(jpegSize(bytes(pathname.slice(1)))).toEqual([1200, 630]);
+  });
+});
