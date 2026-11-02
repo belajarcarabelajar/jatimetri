@@ -1,5 +1,9 @@
 # Jatimetri Assessment Platform
 
+**Live demo:** [jatimetri.belajarcarabelajar.com](https://jatimetri.belajarcarabelajar.com)
+
+![Jatimetri landing page](docs/images/screenshot.png)
+
 Jatimetri is a psychological assessment application designed to help users discover their true potential through an interactive assessment flow. It provides personal profiling, detailed reporting, and visual data representations using a modern React frontend and a serverless API backend.
 
 ## Architecture
