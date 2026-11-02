@@ -10,6 +10,8 @@ vi.mock('@/store/useAssessmentStore', () => ({
 
 import { useAssessmentStore } from '@/store/useAssessmentStore';
 
+type AssessmentState = ReturnType<typeof useAssessmentStore.getState>;
+
 describe('StageSelection', () => {
   it('renders correctly', () => {
     vi.mocked(useAssessmentStore).mockReturnValue(vi.fn()); // Mock setStage
@@ -25,7 +27,8 @@ describe('StageSelection', () => {
     const setStageMock = vi.fn();
     vi.mocked(useAssessmentStore).mockImplementation((selector) => {
       // Mock the store state passed to the selector
-      return selector({ setStage: setStageMock } as any);
+      const state: Partial<AssessmentState> = { setStage: setStageMock };
+      return selector(state as AssessmentState);
     });
 
     render(<StageSelection />);

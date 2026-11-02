@@ -5,18 +5,19 @@ import { useTranslation } from "react-i18next";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Loader2, AlertCircle, Settings, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { DashboardResult, Tendency } from "@/data/scoring/scoring-matrix";
 
 type Report = {
   id: string;
   stage: string;
   created_at: number; // Unix timestamp from D1
   dominance_pattern: string;
-  radar_data: string | any[];
-  tendencies: string | any[];
+  radar_data: string | DashboardResult["radarData"];
+  tendencies: string | Tendency[];
 };
 
 export default function Profile() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const navigate = useNavigate();
@@ -53,9 +54,9 @@ export default function Profile() {
         
         const data = await res.json();
         setReports(data.reports || []);
-      } catch (err: any) {
+      } catch (err) {
         console.warn("Backend fetch failed:", err);
-        setError(`Gagal menghubungi server: ${err.message}`);
+        setError(`Gagal menghubungi server: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         setLoading(false);
       }
@@ -79,8 +80,8 @@ export default function Profile() {
       } else {
         alert("Gagal menghapus. Silakan coba lagi.");
       }
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
+    } catch (e) {
+      alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setDeletingId(null);
     }

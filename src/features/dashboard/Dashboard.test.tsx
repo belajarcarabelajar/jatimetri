@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Dashboard from './Dashboard';
 import { useAssessmentStore } from '@/store/useAssessmentStore';
@@ -12,7 +12,7 @@ vi.mock('react-router', () => ({
 // Mock Clerk
 vi.mock('@clerk/clerk-react', () => ({
   useAuth: () => ({ isSignedIn: true, getToken: vi.fn() }),
-  SignInButton: ({ children }: any) => <div data-testid="sign-in-btn">{children}</div>,
+  SignInButton: ({ children }: { children?: React.ReactNode }) => <div data-testid="sign-in-btn">{children}</div>,
 }));
 
 // Mock Store
@@ -39,8 +39,8 @@ vi.mock('recharts', async () => {
   const OriginalModule = await vi.importActual('recharts');
   return {
     ...OriginalModule,
-    ResponsiveContainer: ({ children }: any) => <div>{children}</div>,
-    RadarChart: ({ children }: any) => <div data-testid="radar-chart">{children}</div>,
+    ResponsiveContainer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    RadarChart: ({ children }: { children?: React.ReactNode }) => <div data-testid="radar-chart">{children}</div>,
   };
 });
 

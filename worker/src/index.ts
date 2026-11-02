@@ -1,16 +1,67 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { createClerkClient } from '@clerk/backend';
-import { drizzle } from 'drizzle-orm/d1';
-import { eq, desc } from 'drizzle-orm';
-import * as schema from './db/schema';
+
+// The subset of the D1 and R2 binding APIs this worker calls. Defined here
+// because @cloudflare/workers-types is not a dependency of the worker.
+interface D1Result<T> {
+  results: T[];
+  success: boolean;
+}
+
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<D1Result<Record<string, unknown>>>;
+  all<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+}
+
+interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+}
+
+interface R2PutOptions {
+  httpMetadata?: { contentType?: string };
+}
+
+interface R2Bucket {
+  put(key: string, value: ArrayBuffer, options?: R2PutOptions): Promise<unknown>;
+}
 
 type Bindings = {
   CLERK_PUBLISHABLE_KEY: string;
   CLERK_SECRET_KEY: string;
-  DB: any; // D1Database
-  REPORTS_BUCKET: any; // R2Bucket
+  VITE_CLERK_PUBLISHABLE_KEY?: string;
+  DB: D1Database;
+  REPORTS_BUCKET: R2Bucket;
 };
+
+// Row shape of the `assessments` table (worker/drizzle/0000_round_scorpion.sql).
+interface AssessmentRow {
+  id: string;
+  user_id: string;
+  stage: string;
+  dominance_pattern: string | null;
+  radar_data: string | null;
+  tendencies: string | null;
+  created_at: number | null;
+}
+
+// Shape sent by src/features/dashboard/Dashboard.tsx; not validated at runtime.
+interface SaveAttemptBody {
+  stage?: string;
+  answers?: Record<string, unknown>;
+  dominancePattern?: string;
+  radarData?: unknown[];
+  tendencies?: unknown[];
+}
+
+// Mirrors reading `.message` off whatever was thrown, without assuming an Error.
+function thrownMessage(error: unknown): unknown {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return error.message;
+  }
+  return undefined;
+}
 
 const app = new Hono<{ Bindings: Bindings, Variables: { userId: string } }>();
 
@@ -28,7 +79,7 @@ app.use('/*', cors({
 
 // Auth Middleware using Clerk Backend API
 app.use('/api/*', async (c, next) => {
-  const publishableKey = c.env.CLERK_PUBLISHABLE_KEY || (c.env as any).VITE_CLERK_PUBLISHABLE_KEY;
+  const publishableKey = c.env.CLERK_PUBLISHABLE_KEY || c.env.VITE_CLERK_PUBLISHABLE_KEY;
   
   if (!publishableKey || !c.env.CLERK_SECRET_KEY) {
     return c.json({ 
@@ -60,8 +111,8 @@ app.use('/api/*', async (c, next) => {
     // Store userId in context
     c.set('userId', requestState.toAuth().userId);
     await next();
-  } catch (error: any) {
-    return c.json({ error: "Auth Exception", details: error.message }, 401);
+  } catch (error) {
+    return c.json({ error: "Auth Exception", details: thrownMessage(error) }, 401);
   }
 });
 
@@ -72,7 +123,7 @@ app.get('/', (c) => {
 // Create Worker API endpoint: POST /api/save-attempt
 app.post('/api/save-attempt', async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = await c.req.json<SaveAttemptBody>();
   const DB = c.env.DB;
 
   // Ensure user exists (upsert)
@@ -101,7 +152,7 @@ app.get('/api/reports', async (c) => {
 
   const { results } = await DB.prepare(
     "SELECT * FROM assessments WHERE user_id = ? ORDER BY created_at DESC"
-  ).bind(userId).all();
+  ).bind(userId).all<AssessmentRow>();
 
   return c.json({ success: true, reports: results || [] });
 });
@@ -121,7 +172,7 @@ app.delete('/api/assessments/:id', async (c) => {
   // Ensure it belongs to the authenticated user before deleting
   const { results } = await DB.prepare(
     "SELECT id FROM assessments WHERE id = ? AND user_id = ?"
-  ).bind(assessmentId, userId).all();
+  ).bind(assessmentId, userId).all<Pick<AssessmentRow, 'id'>>();
 
   if (!results || results.length === 0) {
     return c.json({ error: "Not found or unauthorized" }, 404);

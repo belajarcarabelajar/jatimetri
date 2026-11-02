@@ -1,6 +1,7 @@
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
+import type { DashboardResult } from '@/data/scoring/scoring-matrix';
 
-export function RadarChartPlot({ data }: { data: any[] }) {
+export function RadarChartPlot({ data }: { data: DashboardResult["radarData"] }) {
   return (
     <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">

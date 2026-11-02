@@ -77,8 +77,6 @@ describe('evaluateAnswers – empty / zero-evidence input', () => {
 
 describe('evaluateAnswers – scale answer signals', () => {
   it('Q-01 ≥ 4 increments Exploration-Oriented score', () => {
-    const answers = { 'Q-01': 5 };
-    const result = evaluateAnswers(answers, 'adult');
     // With only 1 evidence point the tendency must NOT appear (min-evidence = 2)
     // so we verify it via a second signal:
     const answers2 = { 'Q-01': 5, 'Q-14': 4 };

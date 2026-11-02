@@ -18,7 +18,7 @@
  *   ✓ Combined flow: stage → answers → complete → reset cycle
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
 // Polyfill localStorage for jsdom (persist middleware needs it)
@@ -43,6 +43,8 @@ import { useAssessmentStore } from './useAssessmentStore';
 
 /** Grab a clean snapshot of the current store state */
 const getState = () => useAssessmentStore.getState();
+
+type Stage = Parameters<ReturnType<typeof getState>['setStage']>[0];
 
 // ---------------------------------------------------------------------------
 // Setup: reset store AND localStorage before each test so tests are isolated
@@ -97,7 +99,8 @@ describe('useAssessmentStore – setStage', () => {
 
   it('does not mutate other state fields', () => {
     getState().setUserName('Alice');
-    getState().setStage('teen' as any);
+    // 'teen' is deliberately outside the Stage union to exercise an invalid value.
+    getState().setStage('teen' as unknown as Stage);
     expect(getState().userName).toBe('Alice');
   });
 });

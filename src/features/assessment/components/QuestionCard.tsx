@@ -1,7 +1,11 @@
-import { Question } from "@/types/assessment";
+import { Question, QuestionOption } from "@/types/assessment";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+// Object options exist only in the stage banks, which nothing renders; this card renders plain string options.
+const stringOptions = (opts?: QuestionOption[]): string[] =>
+  (opts || []).filter((opt): opt is string => typeof opt === "string");
 
 interface Props {
   question: Question;
@@ -13,7 +17,7 @@ interface Props {
 export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Props) {
   
   const handleRankingToggle = (val: string) => {
-    let arr = (Array.isArray(currentAnswer) ? currentAnswer : []) as string[];
+    const arr = (Array.isArray(currentAnswer) ? currentAnswer : []) as string[];
     if (arr.includes(val)) {
       onAnswer(arr.filter(item => item !== val));
     } else {
@@ -42,9 +46,9 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           </div>
         );
         
-      case "dropdown":
+      case "dropdown": {
         // For stage selection, options depend on whether child/teen/adult options are provided
-        const opts = question.options || question.childOptions || question.teenOptions || question.adultOptions || [];
+        const opts = stringOptions(question.options || question.childOptions || question.teenOptions || question.adultOptions);
         return (
           <div className="flex flex-col gap-3">
             {opts.map((opt, idx) => (
@@ -59,6 +63,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
             ))}
           </div>
         );
+      }
 
       case "transition":
         return (
@@ -67,13 +72,13 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           </div>
         );
 
-      case "ranking":
+      case "ranking": {
         const currentArr = (Array.isArray(currentAnswer) ? currentAnswer : []) as string[];
         return (
           <div className="flex flex-col gap-6">
             <p className="text-sm text-muted-foreground font-medium">Pilih maksimal 3 opsi ({currentArr.length}/3 terpilih)</p>
             <div className="flex flex-wrap gap-3">
-              {(question.options || []).map((opt, idx) => {
+              {stringOptions(question.options).map((opt, idx) => {
                 const isSelected = currentArr.includes(opt);
                 const disabled = !isSelected && currentArr.length >= 3;
                 return (
@@ -94,8 +99,9 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
             )}
           </div>
         );
+      }
 
-      case "scale-1-5":
+      case "scale-1-5": {
         const scaleLabels = ["Sangat tidak sesuai", "Kurang sesuai", "Netral / kadang-kadang", "Cukup sesuai", "Sangat sesuai"];
         return (
           <div className="flex flex-col gap-3">
@@ -115,6 +121,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
             })}
           </div>
         );
+      }
 
       case "yes-no":
         return (
@@ -140,7 +147,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
       default:
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(question.options || []).map((opt, idx) => (
+            {stringOptions(question.options).map((opt, idx) => (
               <Button 
                 key={idx} 
                 variant={currentAnswer === opt ? "default" : "outline"}
@@ -153,17 +160,6 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           </div>
         );
     }
-  };
-
-  const getPrompt = () => {
-    if (question.prompt) return question.prompt;
-    if (question.prompts) {
-      // We will actually pass down the chosen stage in the future, 
-      // but for now let's just pick adult by default if stage is not passed.
-      // Wait, we need the stage from props or store! Let's handle it in Assessment.tsx
-      return "";
-    }
-    return "";
   };
 
   return (
