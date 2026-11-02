@@ -23,6 +23,15 @@ export type EvidenceTag = string;
 
 export type InputType = "scale-1-5" | "yes-no" | "tap-card" | "ranking" | "text" | "dropdown" | "transition" | "swipe-poll";
 
+export type QuestionOptionObject = {
+  id: string;
+  label: string;
+  value: string | number | boolean;
+  scoringKeys?: { trait: string; weight: number }[];
+};
+
+export type QuestionOption = string | QuestionOptionObject;
+
 export type Question = {
   id: string;
   scope: AssessmentScope | string;
@@ -31,10 +40,10 @@ export type Question = {
   prompts?: { child: string; teen: string; adult: string };
   helperText?: string;
   inputType: InputType;
-  options?: any[];
-  childOptions?: any[];
-  teenOptions?: any[];
-  adultOptions?: any[];
+  options?: QuestionOption[];
+  childOptions?: QuestionOption[];
+  teenOptions?: QuestionOption[];
+  adultOptions?: QuestionOption[];
   scoringSignal?: string;
   evidenceTags?: EvidenceTag[];
   required?: boolean;

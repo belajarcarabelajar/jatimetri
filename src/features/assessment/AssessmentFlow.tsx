@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useAssessmentStore } from "@/store/useAssessmentStore";
 import { v1Bank } from "@/data/questions/v1-bank";
@@ -9,7 +9,6 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 
 export function AssessmentFlow() {
   const { currentSlideIndex, setSlideIndex, answers, setAnswer, setUserName, setStage, resetAssessment } = useAssessmentStore();
-  const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -65,18 +64,6 @@ export function AssessmentFlow() {
       if (val === "Anak") setStage("child");
       else if (val === "Remaja") setStage("teenager");
       else if (val === "Dewasa") setStage("adult");
-    }
-  };
-
-  const triggerAutoNext = () => {
-    if (window.innerWidth >= 768) {
-      setTimeout(handleNext, 400);
-    } else {
-      const nextCard = document.getElementById(`q-${currentSlideIndex + 1}`);
-      if (nextCard) {
-        nextCard.scrollIntoView({ behavior: 'smooth' });
-        setTimeout(() => setSlideIndex(currentSlideIndex + 1), 500);
-      }
     }
   };
 

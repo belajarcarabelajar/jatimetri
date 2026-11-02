@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { useAssessmentStore } from "@/store/useAssessmentStore";
-import { evaluateAnswers } from "@/data/scoring/scoring-matrix";
+import { evaluateAnswers, type DashboardResult, type Tendency } from "@/data/scoring/scoring-matrix";
 import { RadarChartPlot } from "./components/RadarChartPlot";
 import { SpectrumSlider } from "./components/SpectrumSlider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download, Save, ArrowLeft } from "lucide-react";
+import { Loader2, Download, Save } from "lucide-react";
 import { useAuth, SignInButton } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { ReportPDF } from "../pdf/ReportPDF";
@@ -14,8 +14,8 @@ import { generatePDF } from "../pdf/generatePDF";
 
 type HistoricalReport = {
   dominancePattern: string;
-  radarData: any[];
-  tendencies: any[];
+  radarData: DashboardResult["radarData"];
+  tendencies: Tendency[];
   stage: string;
   createdAt?: string;
 };
@@ -39,15 +39,15 @@ export default function Dashboard() {
   }, []);
 
   // Check if we're viewing a historical report from profile page
-  const [historicalReport, setHistoricalReport] = useState<HistoricalReport | null>(null);
+  const [historicalReport] = useState<HistoricalReport | null>(() => {
+    const stored = sessionStorage.getItem('view-historical-report');
+    return stored ? JSON.parse(stored) : null;
+  });
 
   useEffect(() => {
-    const stored = sessionStorage.getItem('view-historical-report');
-    if (stored) {
-      sessionStorage.removeItem('view-historical-report');
-      setHistoricalReport(JSON.parse(stored));
-    }
-    const timer = setTimeout(() => setLoading(false), historicalReport ? 0 : 2000);
+    sessionStorage.removeItem('view-historical-report');
+    // The old `historicalReport ? 0 : 2000` read the initial null state, so the delay was always 2000 ms.
+    const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -93,9 +93,9 @@ export default function Dashboard() {
          const errData = await res.text();
          alert(`${t('fail_save')} Server Error: ${res.status} - ${errData}`);
       }
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      alert(`${t('network_error')} ${e.message}`);
+      alert(`${t('network_error')} ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

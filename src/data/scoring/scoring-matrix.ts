@@ -1,5 +1,3 @@
-import { AssessmentScope } from "@/types/assessment";
-
 export type Tendency = {
   id: string;
   label: string;
@@ -58,7 +56,11 @@ const descriptions: Record<string, string> = {
   "Adaptive Growth Seeker": "Tampak menonjol dalam mengambil inisiatif, mengarahkan orang lain, dan berfokus pada hasil serta pencapaian nyata."
 };
 
-export function evaluateAnswers(answers: Record<string, string | number | boolean | string[]>, stage: string | null): DashboardResult {
+type Answers = Record<string, string | number | boolean | string[]>;
+
+// Scoring ignores the stage today; the overload keeps it in the public signature that callers and tests use.
+export function evaluateAnswers(answers: Answers, stage: string | null): DashboardResult;
+export function evaluateAnswers(answers: Answers): DashboardResult {
   const scores: Record<string, number> = {
     "Exploration-Oriented": 0,
     "Structured Executor": 0,
