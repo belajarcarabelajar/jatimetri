@@ -18,7 +18,7 @@ globalThis.ResizeObserver = class ResizeObserver {
 vi.mock('react-i18next', () => ({
   useTranslation: () => {
     return {
-      t: (key: string) => (idTranslations as any)[key] || key,
+      t: (key: string) => (idTranslations as Record<string, string>)[key] || key,
       i18n: {
         changeLanguage: () => new Promise(() => {}),
         language: 'id',

@@ -1,9 +1,15 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import userEvent from '@testing-library/user-event';
 import { AssessmentFlow } from './AssessmentFlow';
+import type { QuestionCard as RealQuestionCard } from './components/QuestionCard';
 import { useAssessmentStore } from '@/store/useAssessmentStore';
+
+type StoreState = ReturnType<typeof useAssessmentStore.getState>;
+type MockStoreState = Pick<
+  StoreState,
+  'currentSlideIndex' | 'setSlideIndex' | 'answers' | 'setAnswer' | 'setUserName' | 'setStage' | 'resetAssessment'
+>;
 
 vi.mock('react-router', () => ({
   useNavigate: () => vi.fn(),
@@ -15,7 +21,7 @@ vi.mock('@/store/useAssessmentStore', () => ({
 
 // Mock QuestionCard so we don't need to test its internals here
 vi.mock('./components/QuestionCard', () => ({
-  QuestionCard: ({ question, onNext, onAnswer }: any) => (
+  QuestionCard: ({ question, onNext, onAnswer }: React.ComponentProps<typeof RealQuestionCard>) => (
     <div data-testid="question-card">
       <p>{question.prompt}</p>
       <button onClick={() => onAnswer('mock-answer')}>Answer Mock</button>
@@ -25,7 +31,7 @@ vi.mock('./components/QuestionCard', () => ({
 }));
 
 describe('AssessmentFlow', () => {
-  let storeState: any;
+  let storeState: MockStoreState;
 
   beforeEach(() => {
     storeState = {
@@ -38,7 +44,7 @@ describe('AssessmentFlow', () => {
       resetAssessment: vi.fn(),
     };
 
-    vi.mocked(useAssessmentStore).mockImplementation((selector: any) => {
+    vi.mocked(useAssessmentStore).mockImplementation((selector?: unknown) => {
       if (typeof selector === 'function') {
         return selector(storeState);
       }
@@ -60,7 +66,7 @@ describe('AssessmentFlow', () => {
     storeState.currentSlideIndex = 1;
     storeState.answers = { "Q-ID-01": "John" }; // So it thinks it's answered and enables Next
     
-    const { rerender } = render(<AssessmentFlow />);
+    render(<AssessmentFlow />);
     
     // Prev button should be enabled on slide 1
     const prevBtn = screen.getByRole('button', { name: /sebelumnya/i });

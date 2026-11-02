@@ -37,9 +37,7 @@ describe('cn – class name utility', () => {
   });
 
   it('ignores falsy values: null', () => {
-    // clsx accepts ClassValue which doesn't include null at the type level but
-    // tailwind-merge passes it through clsx; testing runtime behaviour here.
-    expect(cn('text-sm', null as any, 'font-bold')).toBe('text-sm font-bold');
+    expect(cn('text-sm', null, 'font-bold')).toBe('text-sm font-bold');
   });
 
   it('handles conditional (object) syntax: truthy key included', () => {

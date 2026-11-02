@@ -1,7 +1,6 @@
 import React from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import userEvent from '@testing-library/user-event';
 import { QuestionCard } from './QuestionCard';
 import { Question } from '@/types/assessment';
 
@@ -10,7 +9,7 @@ describe('QuestionCard', () => {
     id: "q1",
     scope: "scope 1",
     prompt: "Sample prompt",
-    inputType: "tap-card" as any,
+    inputType: "tap-card",
     stage: "all",
   };
 
@@ -41,7 +40,7 @@ describe('QuestionCard', () => {
       const handleAnswer = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'text' as any }}
+          question={{ ...defaultQuestion, inputType: 'text' }}
           onAnswer={handleAnswer}
         />
       );
@@ -52,13 +51,13 @@ describe('QuestionCard', () => {
 
     it('shows next button only when there is an answer', () => {
       const { rerender } = render(
-        <QuestionCard question={{ ...defaultQuestion, inputType: 'text' as any }} onAnswer={vi.fn()} />
+        <QuestionCard question={{ ...defaultQuestion, inputType: 'text' }} onAnswer={vi.fn()} />
       );
       expect(screen.queryByRole('button', { name: /lanjut/i })).not.toBeInTheDocument();
 
       rerender(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'text' as any }}
+          question={{ ...defaultQuestion, inputType: 'text' }}
           currentAnswer="John"
           onAnswer={vi.fn()}
           onNext={vi.fn()}
@@ -74,7 +73,7 @@ describe('QuestionCard', () => {
       const handleNext = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'dropdown' as any, options: ['A', 'B'] }}
+          question={{ ...defaultQuestion, inputType: 'dropdown', options: ['A', 'B'] }}
           onAnswer={handleAnswer}
           onNext={handleNext}
         />
@@ -96,7 +95,7 @@ describe('QuestionCard', () => {
       const handleNext = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'transition' as any }}
+          question={{ ...defaultQuestion, inputType: 'transition' }}
           onAnswer={vi.fn()}
           onNext={handleNext}
         />
@@ -111,7 +110,7 @@ describe('QuestionCard', () => {
   describe('inputType: ranking', () => {
     it('allows selecting up to 3 options', () => {
       const handleAnswer = vi.fn();
-      const question = { ...defaultQuestion, inputType: 'ranking' as any, options: ['1', '2', '3', '4'] };
+      const question: Question = { ...defaultQuestion, inputType: 'ranking', options: ['1', '2', '3', '4'] };
       
       const { rerender } = render(
         <QuestionCard question={question} onAnswer={handleAnswer} currentAnswer={[]} />
@@ -136,7 +135,7 @@ describe('QuestionCard', () => {
       const handleNext = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'scale-1-5' as any }}
+          question={{ ...defaultQuestion, inputType: 'scale-1-5' }}
           onAnswer={handleAnswer}
           onNext={handleNext}
         />
@@ -161,7 +160,7 @@ describe('QuestionCard', () => {
       const handleNext = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'yes-no' as any }}
+          question={{ ...defaultQuestion, inputType: 'yes-no' }}
           onAnswer={handleAnswer}
           onNext={handleNext}
         />
@@ -183,7 +182,7 @@ describe('QuestionCard', () => {
       const handleNext = vi.fn();
       render(
         <QuestionCard
-          question={{ ...defaultQuestion, inputType: 'tap-card' as any, options: ['Option 1', 'Option 2'] }}
+          question={{ ...defaultQuestion, inputType: 'tap-card', options: ['Option 1', 'Option 2'] }}
           onAnswer={handleAnswer}
           onNext={handleNext}
         />

@@ -5,12 +5,9 @@
  * We test generatePDF()'s own control flow only.
  *
  * Key pattern for jsPDF mocking:
- *   Each `new jsPDF()` call creates a new instance. To inspect calls on that
- *   instance, we keep a module-level `lastInstance` variable that the mock
- *   class sets in its constructor. `vi.clearAllMocks()` resets the spy call
- *   counts on the shared vi.fn() references, but we must NOT re-use the same
- *   object reference across tests (it's overwritten each time generatePDF
- *   instantiates a new jsPDF). So we read `lastInstance` AFTER the call.
+ *   Each `new jsPDF()` call creates a new instance. The mock class delegates
+ *   every method to shared spies stored on globalThis, so tests assert on
+ *   `spies` regardless of which instance generatePDF created.
  *
  * Coverage targets:
  *   ✓ Returns undefined when elementId does not exist in DOM
@@ -36,8 +33,9 @@ const spies = {
   output: vi.fn(() => new Blob(['%PDF-FAKE'], { type: 'application/pdf' })),
 };
 
-// Track the most recently instantiated jsPDF object
-let lastJsPDFInstance: any = null;
+type PdfSpyHost = typeof globalThis & {
+  __pdfSpies?: Record<keyof typeof spies, (...args: unknown[]) => unknown>;
+};
 
 // ---------------------------------------------------------------------------
 // Mocks (hoisted – no outer-scope variable references allowed in factory)
@@ -59,14 +57,11 @@ vi.mock('jspdf', async () => {
   // through a stable reference stored on globalThis before each test.
   class JsPDFMock {
     internal = { pageSize: { getWidth: () => 210 } };
-    getImageProperties(...args: any[]) { return (globalThis as any).__pdfSpies?.getImageProperties(...args); }
-    addPage(...args: any[]) { return (globalThis as any).__pdfSpies?.addPage(...args); }
-    addImage(...args: any[]) { return (globalThis as any).__pdfSpies?.addImage(...args); }
-    save(...args: any[]) { return (globalThis as any).__pdfSpies?.save(...args); }
-    output(...args: any[]) { return (globalThis as any).__pdfSpies?.output(...args); }
-    constructor() {
-      (globalThis as any).__lastJsPDFInstance = this;
-    }
+    getImageProperties(...args: unknown[]) { return (globalThis as PdfSpyHost).__pdfSpies?.getImageProperties(...args); }
+    addPage(...args: unknown[]) { return (globalThis as PdfSpyHost).__pdfSpies?.addPage(...args); }
+    addImage(...args: unknown[]) { return (globalThis as PdfSpyHost).__pdfSpies?.addImage(...args); }
+    save(...args: unknown[]) { return (globalThis as PdfSpyHost).__pdfSpies?.save(...args); }
+    output(...args: unknown[]) { return (globalThis as PdfSpyHost).__pdfSpies?.output(...args); }
   }
   return { default: JsPDFMock };
 });
@@ -104,19 +99,12 @@ beforeEach(() => {
   // Reset output to return a fresh Blob each test
   spies.output.mockReturnValue(new Blob(['%PDF-FAKE'], { type: 'application/pdf' }));
   // Attach spies to globalThis so the mock class delegates to them
-  (globalThis as any).__pdfSpies = spies;
-  lastJsPDFInstance = null;
-  (globalThis as any).__lastJsPDFInstance = null;
+  (globalThis as PdfSpyHost).__pdfSpies = spies;
 });
 
 afterEach(() => {
   document.body.innerHTML = '';
 });
-
-/** Get the jsPDF instance that was created during the most recent generatePDF() call */
-function getInstance() {
-  return (globalThis as any).__lastJsPDFInstance;
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -214,7 +202,9 @@ describe('generatePDF – style restoration', () => {
     const observedDisplays: string[] = [];
     mockHtml2canvas.mockImplementationOnce(async (el: HTMLElement) => {
       observedDisplays.push((el.parentElement as HTMLElement).style.display);
-      return { toDataURL: () => 'data:image/jpeg;base64,FAKE' } as any;
+      return Object.assign(document.createElement('canvas'), {
+        toDataURL: () => 'data:image/jpeg;base64,FAKE',
+      });
     });
 
     const container = createPageContainer('style-block', 1);
