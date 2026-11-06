@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Profile from './Profile';
@@ -9,17 +8,25 @@ vi.mock('react-router', () => ({
   useNavigate: () => navigateMock,
 }));
 
-const signOutMock = vi.fn().mockResolvedValue(undefined);
-// Stable references: a new getToken per render would re-trigger the fetch effect
-const authState = { isSignedIn: true, getToken: vi.fn().mockResolvedValue('fake-token') };
-const clerkState = { signOut: signOutMock };
-
-// Mock Clerk
-vi.mock('@clerk/clerk-react', () => ({
-  useAuth: () => authState,
-  useClerk: () => clerkState,
-  useUser: () => ({ user: { fullName: 'Test User', primaryEmailAddress: { emailAddress: 'test@example.com' } } }),
+const resetAssessmentMock = vi.hoisted(() => vi.fn());
+vi.mock('@/store/useAssessmentStore', () => ({
+  useAssessmentStore: (select: (s: { resetAssessment: () => void }) => unknown) => select({ resetAssessment: resetAssessmentMock }),
 }));
+
+// Stable references: a new refresh per render would re-trigger the fetch effect
+const session = vi.hoisted(() => ({
+  status: 'signedIn' as const,
+  email: 'test@example.com',
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  refresh: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/lib/auth', () => ({
+  useSession: () => session,
+}));
+
+const openDeleteData = () =>
+  fireEvent.click(within(screen.getByText('Hapus Data Jatimetri').closest('div.space-y-4') as HTMLElement).getByRole('button', { name: /^Hapus$/ }));
 
 describe('Profile', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -63,15 +70,58 @@ describe('Profile', () => {
       expect(screen.getByText(/Pola Dominan: Pattern 1/i)).toBeInTheDocument();
     });
     
-    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/reports', expect.objectContaining({ credentials: 'include' }));
   });
 
-  it('deletes the account only after typing the confirmation word', async () => {
+  it('shows the session email with an initial-letter avatar', () => {
+    render(<Profile />);
+    expect(screen.getByText('test@example.com')).toBeInTheDocument();
+    expect(screen.getByText('T')).toBeInTheDocument();
+  });
+
+  it('explains that the BCB account is managed at belajarcarabelajar.com/account', () => {
+    render(<Profile />);
+    expect(screen.getByRole('link', { name: /belajarcarabelajar\.com\/account/ }))
+      .toHaveAttribute('href', 'https://belajarcarabelajar.com/account');
+  });
+
+  it('re-checks the session when the reports request is unauthorized', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue({ ok: false, status: 401 } as Response);
+    render(<Profile />);
+    await waitFor(() => expect(session.refresh).toHaveBeenCalled());
+    expect(screen.queryByText(/Gagal menghubungi server/)).not.toBeInTheDocument();
+  });
+
+  it('shows an error when the reports request fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(globalThis.fetch).mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' } as Response);
+    render(<Profile />);
+    await waitFor(() => expect(screen.getByText(/Gagal menghubungi server: Server Error: 500 - boom/)).toBeInTheDocument());
+    warnSpy.mockRestore();
+  });
+
+  it('deletes a single assessment after confirmation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<Profile />);
     await waitFor(() => expect(screen.getByText(/Pola Dominan: Pattern 1/i)).toBeInTheDocument());
 
-    fireEvent.click(within(screen.getByText('Hapus Akun & Data').closest('div.space-y-4') as HTMLElement).getByRole('button', { name: /^Hapus$/ }));
-    const confirmButton = screen.getByRole('button', { name: /Hapus Akun Permanen/ });
+    const listFetch = vi.mocked(globalThis.fetch).getMockImplementation();
+    vi.mocked(globalThis.fetch).mockImplementation((url, init) =>
+      init?.method === 'DELETE' ? Promise.resolve({ ok: true } as Response) : listFetch!(url, init));
+    const row = screen.getByText(/Pola Dominan: Pattern 1/i).closest('div.p-4') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Hapus/ }));
+
+    await waitFor(() => expect(screen.queryByText(/Pola Dominan: Pattern 1/i)).not.toBeInTheDocument());
+    expect(globalThis.fetch).toHaveBeenLastCalledWith('/api/assessments/1', expect.objectContaining({ method: 'DELETE', credentials: 'include' }));
+    confirmSpy.mockRestore();
+  });
+
+  it('deletes the Jatimetri data only after typing the confirmation word', async () => {
+    render(<Profile />);
+    await waitFor(() => expect(screen.getByText(/Pola Dominan: Pattern 1/i)).toBeInTheDocument());
+
+    openDeleteData();
+    const confirmButton = screen.getByRole('button', { name: /Hapus Data Permanen/ });
     expect(confirmButton).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/untuk konfirmasi/), { target: { value: 'hapus' } });
@@ -84,26 +134,31 @@ describe('Profile', () => {
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/'));
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
-      expect.stringMatching(/\/api\/account$/),
-      expect.objectContaining({ method: 'DELETE' })
+      '/api/account',
+      expect.objectContaining({ method: 'DELETE', credentials: 'include' })
     );
-    expect(signOutMock).toHaveBeenCalled();
+    expect(resetAssessmentMock).toHaveBeenCalled();
+    // The Worker cleared the cookie; the session is re-read (→ signed out), not logged out separately
+    expect(session.refresh).toHaveBeenCalled();
+    expect(session.signOut).not.toHaveBeenCalled();
   });
 
-  it('keeps the user signed in when account deletion fails', async () => {
+  it('keeps the user signed in when deleting the data fails', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<Profile />);
     await waitFor(() => expect(screen.getByText(/Pola Dominan: Pattern 1/i)).toBeInTheDocument());
 
-    fireEvent.click(within(screen.getByText('Hapus Akun & Data').closest('div.space-y-4') as HTMLElement).getByRole('button', { name: /^Hapus$/ }));
+    openDeleteData();
     fireEvent.change(screen.getByLabelText(/untuk konfirmasi/), { target: { value: 'HAPUS' } });
     const listFetch = vi.mocked(globalThis.fetch).getMockImplementation();
     vi.mocked(globalThis.fetch).mockImplementation((url, init) =>
       init?.method === 'DELETE' ? Promise.resolve({ ok: false, status: 500 } as Response) : listFetch!(url, init));
-    fireEvent.click(screen.getByRole('button', { name: /Hapus Akun Permanen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Hapus Data Permanen/ }));
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-    expect(signOutMock).not.toHaveBeenCalled();
+    expect(session.refresh).not.toHaveBeenCalled();
+    expect(resetAssessmentMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 });

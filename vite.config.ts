@@ -10,6 +10,14 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  server: {
+    // The Worker (wrangler dev, :8787) serves the API and the BCB login receiver.
+    // Proxying keeps them same-origin in dev, so the session cookie just works.
+    proxy: {
+      '/api': 'http://localhost:8787',
+      '/masuk-bcb': 'http://localhost:8787',
+    },
+  },
   build: {
     // generatePDF (jspdf + html2canvas, ~600 kB) is only loaded on download.
     chunkSizeWarningLimit: 650,
@@ -26,7 +34,6 @@ export default defineConfig({
           includeDependenciesRecursively: false,
           groups: [
             { name: 'react-vendor', test: /node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/ },
-            { name: 'clerk', test: /node_modules[\\/]@clerk[\\/]/ },
           ],
         },
       },

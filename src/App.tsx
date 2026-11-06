@@ -1,9 +1,9 @@
 import { useEffect, lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 import { Loader2 } from "lucide-react";
 import { MainLayout } from "./components/layout/MainLayout";
 import NotFound from "./components/NotFound";
+import { RequireSession } from "./lib/auth";
 
 // Route components are code-split so the landing page does not pay for
 // recharts, the assessment flow or the PDF pipeline up front.
@@ -64,14 +64,9 @@ function Home() {
 
 function ProtectedProfile() {
   return (
-    <>
-      <SignedIn>
-        <Lazy><Profile /></Lazy>
-      </SignedIn>
-      <SignedOut>
-        <RedirectToSignIn />
-      </SignedOut>
-    </>
+    <RequireSession next="/profile">
+      <Lazy><Profile /></Lazy>
+    </RequireSession>
   );
 }
 

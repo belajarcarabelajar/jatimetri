@@ -28,5 +28,9 @@
   "no_result_title": "Belum ada hasil",
   "no_result_desc": "Jawab pertanyaan assessment terlebih dahulu agar kami dapat memetakan kecenderungan dan potensimu.",
   "start_assessment": "Mulai Assessment",
-  "continue_assessment": "Lanjutkan Assessment"
+  "continue_assessment": "Lanjutkan Assessment",
+  "sign_out": "Keluar",
+  "account": "Akun",
+  "signed_in_as": "Masuk sebagai",
+  "main_navigation": "Navigasi utama"
 }

@@ -28,5 +28,9 @@
   "no_result_title": "No results yet",
   "no_result_desc": "Answer the assessment questions first so we can map your tendencies and potential.",
   "start_assessment": "Start Assessment",
-  "continue_assessment": "Continue Assessment"
+  "continue_assessment": "Continue Assessment",
+  "sign_out": "Sign Out",
+  "account": "Account",
+  "signed_in_as": "Signed in as",
+  "main_navigation": "Main navigation"
 }

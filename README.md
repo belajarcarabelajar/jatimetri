@@ -10,7 +10,7 @@ Jatimetri is a psychological assessment application designed to help users disco
 
 The project is structured as a monorepo containing two primary layers:
 
-- **Frontend (`/src`)**: A React Single Page Application built with Vite, TypeScript, TailwindCSS, and Shadcn UI. State is managed via Zustand, authentication is handled by Clerk (sign-in is only required for `/profile` and for saving reports; the assessment itself is anonymous), and reporting includes PDF generation and radar charts.
+- **Frontend (`/src`)**: A React Single Page Application built with Vite, TypeScript, TailwindCSS, and Shadcn UI. State is managed via Zustand, sign-in uses the BCB Academy unified login (only required for `/profile` and for saving reports; the assessment itself is anonymous), and reporting includes PDF generation and radar charts.
 - **Backend (`/worker`)**: A Cloudflare Worker built with Hono and Drizzle ORM. It provides a secure API to save attempts, retrieve historical reports, and upload generated PDFs.
 
 ### Directory Structure
@@ -25,24 +25,31 @@ The project is structured as a monorepo containing two primary layers:
 
 - [Bun](https://bun.sh/) (version pinned in `.bun-version`)
 - [Node.js](https://nodejs.org/) 20.19+ or 22.12+ (required by Vite 8)
-- A [Clerk](https://clerk.com/) Account (for authentication)
 - A [Cloudflare](https://dash.cloudflare.com/) Account (for Workers, D1 Database, and R2 Storage)
 
 ## Environment Variables
 
 Configuration is required for both the frontend and the backend.
 
-### Frontend (`.env.local`)
-Copy `.env.example` to `.env.local` in the root directory for local development:
+### Frontend (`.env.local`, optional)
+The frontend needs **no** environment variables. The API is called on the same origin as the SPA
+(relative `/api/...` URLs). Only if the API lives on another origin, set it in `.env.local` (see `.env.example`):
 ```env
-# Your Clerk Publishable Key
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-
-# In production (.env.production), define the API URL:
-# VITE_API_URL=https://jatimetri-api.<your-subdomain>.workers.dev
+# Default: same origin
+# VITE_API_URL=https://api.example.com
 ```
 
-`VITE_API_URL` falls back to `http://localhost:8787`, so it **must** be set for production builds.
+### Authentication (BCB Academy unified login)
+There are no auth keys or tokens in the browser. Login works like this:
+
+1. "Masuk" (or "Login & Simpan" on the dashboard) navigates the whole page to `/masuk-bcb/mulai?next=<current path>`.
+2. The Worker sends the browser to the BCB Academy login at belajarcarabelajar.com, which hands back to the Worker's receiver.
+3. The Worker sets an HttpOnly first-party session cookie on `jatimetri.belajarcarabelajar.com` and redirects to `next`.
+
+The SPA reads the session from `GET /api/me` (`{ "email" }` or 401) through `useSession()` in `src/lib/auth`,
+calls the API with `credentials: "include"` via `src/lib/api.ts`, and signs out with `POST /api/logout`.
+"Hapus Data Jatimetri" on `/profile` (`DELETE /api/account`) deletes only the Jatimetri history and PDFs;
+the BCB account itself is managed at [belajarcarabelajar.com/account](https://belajarcarabelajar.com/account).
 
 ### Backend (`.dev.vars`)
 Create a `.dev.vars` file in the root directory (next to `wrangler.toml`) for local backend secrets:
@@ -89,6 +96,7 @@ Open a separate terminal in the root directory and start Vite:
 ```bash
 bun run dev
 ```
+The Vite dev server proxies `/api` and `/masuk-bcb` to `http://localhost:8787`, so the SPA and the Worker share one origin (and the session cookie) in development too. Without the Worker running, the app still works and simply shows the signed-out state.
 
 ## Testing
 

@@ -7,7 +7,8 @@ import { SpectrumSlider } from "./components/SpectrumSlider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Download, Save, ClipboardList, ArrowRight } from "lucide-react";
-import { useAuth, SignInButton } from "@clerk/clerk-react";
+import { useSession } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 import { ReportPDF } from "../pdf/ReportPDF";
 
@@ -24,7 +25,8 @@ export default function Dashboard() {
   const { answers, stage, userName } = useAssessmentStore();
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const { isSignedIn, getToken } = useAuth();
+  const { status: sessionStatus, signIn } = useSession();
+  const isSignedIn = sessionStatus === "signedIn";
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -77,17 +79,11 @@ export default function Dashboard() {
   })();
   const effectiveStage = historicalReport ? historicalReport.stage : (stage || stageFromAnswer || "adult");
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-
   const handleSave = async () => {
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_URL}/api/save-attempt`, {
+      const res = await apiFetch("/api/save-attempt", {
          method: "POST",
-         headers: {
-           "Content-Type": "application/json",
-           "Authorization": `Bearer ${token}`
-         },
+         headers: { "Content-Type": "application/json" },
          body: JSON.stringify({
             stage: effectiveStage,
             answers,
@@ -98,6 +94,9 @@ export default function Dashboard() {
       });
       if (res.ok) {
          navigate('/profile');
+      } else if (res.status === 401) {
+         // Session expired: log in again and come back; the answers stay in localStorage
+         signIn('/dashboard');
       } else {
          const errData = await res.text();
          alert(`${t('fail_save')} Server Error: ${res.status} - ${errData}`);
@@ -118,14 +117,10 @@ export default function Dashboard() {
       
       // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
       if (isSignedIn && pdfBlob && !historicalReport) {
-        const token = await getToken();
         // 1. Save Result first to get assessmentId
-        const resSave = await fetch(`${API_URL}/api/save-attempt`, {
+        const resSave = await apiFetch("/api/save-attempt", {
            method: "POST",
-           headers: {
-             "Content-Type": "application/json",
-             "Authorization": `Bearer ${token}`
-           },
+           headers: { "Content-Type": "application/json" },
            body: JSON.stringify({
               stage: effectiveStage,
               answers,
@@ -143,11 +138,8 @@ export default function Dashboard() {
            formData.append("file", pdfBlob, "report.pdf");
            formData.append("assessmentId", assessmentId);
 
-           const resUpload = await fetch(`${API_URL}/api/upload-pdf`, {
+           const resUpload = await apiFetch("/api/upload-pdf", {
              method: "POST",
-             headers: {
-               "Authorization": `Bearer ${token}`
-             },
              body: formData
            });
            if (!resUpload.ok) {
@@ -213,18 +205,16 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-             {!historicalReport && (
-               isSignedIn ? (
-                 <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave}>
-                   <Save className="w-4 h-4 mr-2" /> {t('save_report')}
-                 </Button>
-               ) : (
-                 <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
-                   <Button variant="outline" className="flex-1 md:flex-none text-primary border-primary hover:bg-primary-soft">
-                     <Save className="w-4 h-4 mr-2" /> {t('login_save')}
-                   </Button>
-                 </SignInButton>
-               )
+             {!historicalReport && isSignedIn && (
+               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave}>
+                 <Save className="w-4 h-4 mr-2" /> {t('save_report')}
+               </Button>
+             )}
+             {!historicalReport && sessionStatus === "signedOut" && (
+               // Full-page login; the answers persist in localStorage so the user can save on return
+               <Button variant="outline" className="flex-1 md:flex-none text-primary border-primary hover:bg-primary-soft" onClick={() => signIn('/dashboard')}>
+                 <Save className="w-4 h-4 mr-2" /> {t('login_save')}
+               </Button>
              )}
              <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf}>
                {generatingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} 

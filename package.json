@@ -17,7 +17,6 @@
     "worker:typecheck": "tsc --noEmit -p worker"
   },
   "dependencies": {
-    "@clerk/clerk-react": "^5.61.11",
     "@fontsource/outfit": "^5.3.0",
     "@fontsource/plus-jakarta-sans": "^5.3.0",
     "@radix-ui/react-progress": "^1.2.1",

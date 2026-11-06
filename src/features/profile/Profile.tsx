@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { useSession } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Loader2, AlertCircle, Settings, Trash2, Eye } from "lucide-react";
+import { Loader2, AlertCircle, Settings, Trash2, Eye, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAssessmentStore } from "@/store/useAssessmentStore";
 import type { DashboardResult, Tendency } from "@/data/scoring/scoring-matrix";
 
 const DELETE_CONFIRM_WORD = "HAPUS";
+const BCB_ACCOUNT_URL = "https://belajarcarabelajar.com/account";
 
 type Report = {
   id: string;
@@ -33,9 +35,7 @@ function parseJsonField<T>(value: string | T[] | null | undefined): T[] {
 
 export default function Profile() {
   const { i18n } = useTranslation();
-  const { isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { email, refresh } = useSession();
   const resetAssessment = useAssessmentStore((s) => s.resetAssessment);
   const navigate = useNavigate();
 
@@ -59,19 +59,18 @@ export default function Profile() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const token = await getToken();
-        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-        const res = await fetch(`${API_URL}/api/reports`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        
+        const res = await apiFetch("/api/reports");
+
+        if (res.status === 401) {
+          // Session expired: re-check it so the route guard sends the user to the login
+          void refresh();
+          return;
+        }
         if (!res.ok) {
           const errData = await res.text();
           throw new Error(`Server Error: ${res.status} - ${errData}`);
         }
-        
+
         const data = await res.json();
         setReports(data.reports || []);
       } catch (err) {
@@ -83,18 +82,13 @@ export default function Profile() {
     };
 
     fetchReports();
-  }, [isSignedIn, getToken]);
+  }, [refresh]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Hapus riwayat assessment ini? Tindakan tidak bisa dibatalkan.")) return;
     setDeletingId(id);
     try {
-      const token = await getToken();
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-      const res = await fetch(`${API_URL}/api/assessments/${id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
+      const res = await apiFetch(`/api/assessments/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (res.ok) {
         setReports(prev => prev.filter(r => r.id !== id));
       } else {
@@ -111,25 +105,16 @@ export default function Profile() {
     if (confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD) return;
     setDeletingAccount(true);
     try {
-      const token = await getToken();
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-      const res = await fetch(`${API_URL}/api/account`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.status === 502) {
-        // Worker removed all data but Clerk refused to delete the login itself
-        setReports([]);
-        alert("Semua data Anda sudah dihapus, tetapi akun login belum berhasil dihapus. Silakan coba lagi nanti.");
-        return;
-      }
+      // Deletes only the Jatimetri data (history, PDFs, session); the BCB account itself stays
+      const res = await apiFetch("/api/account", { method: "DELETE" });
       if (!res.ok) {
-        alert("Gagal menghapus akun. Silakan coba lagi atau hubungi kami.");
+        alert("Gagal menghapus data Jatimetri. Silakan coba lagi atau hubungi kami.");
         return;
       }
       resetAssessment();
       try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
-      await signOut();
+      // The Worker cleared the session cookie; re-read it so the app shows the signed-out state
+      await refresh();
       navigate('/');
     } catch (e) {
       alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
@@ -156,18 +141,36 @@ export default function Profile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4 border p-4 rounded-lg">
-              <img src={user?.imageUrl} alt={`Foto profil pengguna ${user?.firstName || ''}`} loading="lazy" className="w-12 h-12 rounded-full aspect-square" />
-              <div>
-                <p className="font-semibold">{user?.fullName || "Pengguna"}</p>
-                <p className="text-sm text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
+              <div
+                aria-hidden="true"
+                className="w-12 h-12 shrink-0 rounded-full bg-primary/15 text-primary text-lg font-semibold flex items-center justify-center"
+              >
+                {(email?.charAt(0) || "?").toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Masuk dengan akun BCB Academy</p>
+                <p className="font-semibold truncate">{email}</p>
               </div>
             </div>
-            
+
             <div className="p-4 border rounded-lg border-destructive/20 bg-destructive/5 space-y-4">
               <div className="flex justify-between items-center gap-4">
                 <div>
-                  <h3 className="font-semibold text-destructive">Hapus Akun & Data</h3>
-                  <p className="text-sm text-muted-foreground">Akun, semua riwayat assessment, dan PDF laporan akan dihapus permanen.</p>
+                  <h3 className="font-semibold text-destructive">Hapus Data Jatimetri</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Semua riwayat assessment dan PDF laporan Jatimetri Anda akan dihapus permanen, lalu Anda akan keluar.
+                    Akun BCB Academy Anda tidak ikut terhapus; akun itu dikelola di{" "}
+                    <a
+                      href={BCB_ACCOUNT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 font-medium text-primary underline underline-offset-2"
+                    >
+                      belajarcarabelajar.com/account
+                      <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                    </a>
+                    .
+                  </p>
                 </div>
                 {!confirmingAccountDelete && (
                   <Button variant="destructive" size="sm" onClick={() => setConfirmingAccountDelete(true)}>
@@ -177,11 +180,11 @@ export default function Profile() {
               </div>
               {confirmingAccountDelete && (
                 <div className="space-y-3">
-                  <label htmlFor="delete-account-confirm" className="text-sm font-medium block">
+                  <label htmlFor="delete-data-confirm" className="text-sm font-medium block">
                     Ketik <strong>{DELETE_CONFIRM_WORD}</strong> untuk konfirmasi. Tindakan ini tidak bisa dibatalkan.
                   </label>
                   <Input
-                    id="delete-account-confirm"
+                    id="delete-data-confirm"
                     value={confirmText}
                     onChange={(e) => setConfirmText(e.target.value)}
                     autoComplete="off"
@@ -195,7 +198,7 @@ export default function Profile() {
                       disabled={deletingAccount || confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD}
                     >
                       {deletingAccount ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2"/>}
-                      Hapus Akun Permanen
+                      Hapus Data Permanen
                     </Button>
                     <Button
                       variant="outline"

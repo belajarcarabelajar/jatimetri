@@ -11,10 +11,16 @@ vi.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-// Mock Clerk
-vi.mock('@clerk/clerk-react', () => ({
-  useAuth: () => ({ isSignedIn: true, getToken: vi.fn() }),
-  SignInButton: ({ children }: { children?: React.ReactNode }) => <div data-testid="sign-in-btn">{children}</div>,
+// Mock the session (signed in by default; tests flip `status`)
+const session = vi.hoisted(() => ({
+  status: 'signedIn' as 'loading' | 'signedIn' | 'signedOut',
+  email: 'test@example.com',
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  refresh: vi.fn(),
+}));
+vi.mock('@/lib/auth', () => ({
+  useSession: () => session,
 }));
 
 // Mock Store
@@ -108,7 +114,6 @@ describe('Dashboard – empty state', () => {
     expect(screen.queryByText('Menganalisis Pola dan Potensi...')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Unduh PDF/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Simpan|Masuk/ })).not.toBeInTheDocument();
-    expect(screen.queryByTestId('sign-in-btn')).not.toBeInTheDocument();
     expect(document.getElementById('pdf-container')).toBeNull();
   });
 
@@ -186,5 +191,91 @@ describe('Dashboard – PDF download', () => {
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Gagal membuat PDF.'));
     alertSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+});
+
+describe('Dashboard – save & login', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockNavigate.mockClear();
+    session.signIn.mockClear();
+    vi.mocked(useAssessmentStore).mockReturnValue({
+      answers: { 'Q-01': 5 },
+      stage: 'adult',
+      userName: 'Test User',
+    });
+  });
+
+  afterEach(() => {
+    session.status = 'signedIn';
+    vi.unstubAllGlobals();
+  });
+
+  it('signed out: "Login & Simpan" sends the user to the BCB login and back to /dashboard', () => {
+    session.status = 'signedOut';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    renderLoaded();
+
+    expect(screen.queryByRole('button', { name: /Simpan Laporan/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Login & Simpan/ }));
+
+    expect(session.signIn).toHaveBeenCalledWith('/dashboard');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('while the session is loading, offers neither save nor login', () => {
+    session.status = 'loading';
+    renderLoaded();
+
+    expect(screen.queryByRole('button', { name: /Login & Simpan/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Simpan Laporan/ })).not.toBeInTheDocument();
+  });
+
+  it('signed out: downloading a PDF does not call the API', async () => {
+    session.status = 'signedOut';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
+    await waitFor(() => expect(generatePDF).toHaveBeenCalled());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('signed in: saves with the session cookie (no Authorization header) and opens /profile', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+    renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/save-attempt');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' });
+    expect(init.headers).not.toHaveProperty('Authorization');
+    expect(JSON.parse(init.body)).toMatchObject({ stage: 'adult', answers: { 'Q-01': 5 }, dominancePattern: 'Test Pattern' });
+  });
+
+  it('signed in: an expired session (401) sends the user back through the login', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => '' }));
+    renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
+
+    await waitFor(() => expect(session.signIn).toHaveBeenCalledWith('/dashboard'));
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('signed in: alerts on other save errors', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }));
+    renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('500 - boom')));
+    alertSpy.mockRestore();
   });
 });
