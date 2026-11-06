@@ -16,6 +16,17 @@ type Report = {
   tendencies: string | Tendency[];
 };
 
+// A malformed row from the API must not crash the whole history list
+function parseJsonField<T>(value: string | T[] | null | undefined): T[] {
+  if (typeof value !== 'string') return value ?? [];
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function Profile() {
   const { i18n } = useTranslation();
   const { isSignedIn, getToken } = useAuth();
@@ -136,8 +147,8 @@ export default function Profile() {
             ) : (
               <div className="space-y-4">
                 {reports.map((report) => {
-                  const radarData = typeof report.radar_data === 'string' ? JSON.parse(report.radar_data || '[]') : (report.radar_data || []);
-                  const tendencies = typeof report.tendencies === 'string' ? JSON.parse(report.tendencies || '[]') : (report.tendencies || []);
+                  const radarData = parseJsonField(report.radar_data);
+                  const tendencies = parseJsonField(report.tendencies);
                   const dateLabel = report.created_at
                     ? new Date(Number(report.created_at) * 1000).toLocaleDateString(i18n.language, { year: 'numeric', month: 'long', day: 'numeric' })
                     : '-';

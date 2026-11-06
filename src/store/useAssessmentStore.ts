@@ -14,6 +14,7 @@ interface AssessmentState {
   setStage: (stage: Stage) => void;
   setUserName: (name: string) => void;
   setAnswer: (questionId: string, value: AnswerValue) => void;
+  clearAnswer: (questionId: string) => void;
   nextSlide: () => void;
   prevSlide: () => void;
   setSlideIndex: (index: number) => void;
@@ -34,6 +35,12 @@ export const useAssessmentStore = create<AssessmentState>()(
       setUserName: (userName) => set({ userName }),
       setAnswer: (questionId, value) => 
         set((state) => ({ answers: { ...state.answers, [questionId]: value } })),
+      clearAnswer: (questionId) =>
+        set((state) => {
+          const answers = { ...state.answers };
+          delete answers[questionId];
+          return { answers };
+        }),
       nextSlide: () => 
         set((state) => ({ currentSlideIndex: state.currentSlideIndex + 1 })),
       prevSlide: () => 

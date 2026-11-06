@@ -40,12 +40,16 @@ export default function Dashboard() {
 
   // Check if we're viewing a historical report from profile page
   const [historicalReport] = useState<HistoricalReport | null>(() => {
-    const stored = sessionStorage.getItem('view-historical-report');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = sessionStorage.getItem('view-historical-report');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
 
   useEffect(() => {
-    sessionStorage.removeItem('view-historical-report');
+    try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
     // The old `historicalReport ? 0 : 2000` read the initial null state, so the delay was always 2000 ms.
     const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
@@ -105,7 +109,8 @@ export default function Dashboard() {
       const safeUserName = userName || "Pengguna";
       const pdfBlob = await generatePDF("pdf-container", `Inner_Potential_Assessment_${safeUserName}_${new Date().toISOString().split('T')[0]}.pdf`);
       
-      if (isSignedIn && pdfBlob) {
+      // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
+      if (isSignedIn && pdfBlob && !historicalReport) {
         const token = await getToken();
         // 1. Save Result first to get assessmentId
         const resSave = await fetch(`${API_URL}/api/save-attempt`, {
@@ -131,13 +136,18 @@ export default function Dashboard() {
            formData.append("file", pdfBlob, "report.pdf");
            formData.append("assessmentId", assessmentId);
 
-           await fetch(`${API_URL}/api/upload-pdf`, {
+           const resUpload = await fetch(`${API_URL}/api/upload-pdf`, {
              method: "POST",
              headers: {
                "Authorization": `Bearer ${token}`
              },
              body: formData
            });
+           if (!resUpload.ok) {
+             console.error(`PDF upload failed: ${resUpload.status}`);
+           }
+        } else {
+           console.error(`Saving attempt failed: ${resSave.status}`);
         }
       }
     } catch (e) {

@@ -34,6 +34,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           <div className="flex flex-col gap-4">
             <Input 
               autoFocus
+              aria-label="Nama kamu"
               placeholder="Ketik nama kamu di sini..." 
               value={typeof currentAnswer === 'string' ? currentAnswer : ''}
               onChange={(e) => onAnswer(e.target.value)}
@@ -55,6 +56,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
               <Button 
                 key={idx} 
                 variant={currentAnswer === opt ? "default" : "outline"}
+                aria-pressed={currentAnswer === opt}
                 className={`justify-start h-16 text-lg text-left transition-all duration-300 rounded-2xl ${currentAnswer === opt ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
                 onClick={() => { onAnswer(opt); setTimeout(() => onNext?.(), 300); }}
               >
@@ -85,6 +87,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
                   <Button 
                     key={idx} 
                     variant={isSelected ? "default" : "outline"}
+                aria-pressed={isSelected}
                     className="h-auto py-3 px-5 text-left whitespace-normal hover:border-primary transition rounded-full"
                     disabled={disabled}
                     onClick={() => handleRankingToggle(opt)}
@@ -111,6 +114,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
                 <Button 
                   key={val} 
                   variant={currentAnswer === val ? "default" : "outline"}
+                aria-pressed={currentAnswer === val}
                   className={`justify-start h-auto py-5 text-left whitespace-normal transition-all duration-300 rounded-2xl ${currentAnswer === val ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
                   onClick={() => { onAnswer(val); setTimeout(() => onNext?.(), 300); }}
                 >
@@ -128,6 +132,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           <div className="flex gap-4">
             <Button 
                 variant={currentAnswer === "yes" ? "default" : "outline"}
+                aria-pressed={currentAnswer === "yes"}
                 className="flex-1 h-20 text-xl hover:border-primary transition"
                 onClick={() => { onAnswer("yes"); setTimeout(() => onNext?.(), 200); }}
               >
@@ -135,6 +140,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
             </Button>
             <Button 
                 variant={currentAnswer === "no" ? "default" : "outline"}
+                aria-pressed={currentAnswer === "no"}
                 className="flex-1 h-20 text-xl hover:border-primary transition"
                 onClick={() => { onAnswer("no"); setTimeout(() => onNext?.(), 200); }}
               >
@@ -151,6 +157,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
               <Button 
                 key={idx} 
                 variant={currentAnswer === opt ? "default" : "outline"}
+                aria-pressed={currentAnswer === opt}
                 className={`h-auto min-h-[6rem] text-lg whitespace-normal p-6 flex items-center text-left transition-all duration-300 rounded-3xl ${currentAnswer === opt ? 'shadow-md scale-[1.02]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
                 onClick={() => { onAnswer(opt); setTimeout(() => onNext?.(), 300); }}
               >

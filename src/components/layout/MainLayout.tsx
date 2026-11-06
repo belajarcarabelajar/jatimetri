@@ -44,6 +44,7 @@ export function MainLayout() {
             className="p-2 -mr-2 text-foreground/80 hover:text-foreground hover:bg-secondary/20 rounded-full transition-colors"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle Menu"
+            aria-expanded={isMobileMenuOpen}
           >
             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>

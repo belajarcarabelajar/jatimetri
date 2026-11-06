@@ -8,16 +8,18 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 export function AssessmentFlow() {
-  const { currentSlideIndex, setSlideIndex, answers, setAnswer, setUserName, setStage, resetAssessment } = useAssessmentStore();
+  const { currentSlideIndex, setSlideIndex, answers, setAnswer, clearAnswer, setUserName, setStage, resetAssessment } = useAssessmentStore();
   const navigate = useNavigate();
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const questions = v1Bank;
-  const progress = ((currentSlideIndex + 1) / questions.length) * 100;
+  // A persisted index can be out of range after the question bank changes
+  const slideIndex = Math.min(Math.max(currentSlideIndex, 0), questions.length - 1);
+  const progress = ((slideIndex + 1) / questions.length) * 100;
 
-  const currentQuestion = questions[currentSlideIndex];
+  const currentQuestion = questions[slideIndex];
 
   // Determine stage from Q-ID-02
   const stageRaw = answers["Q-ID-02"] as string;
@@ -40,14 +42,14 @@ export function AssessmentFlow() {
   }
 
   const handleNext = () => {
-    if (currentSlideIndex < questions.length - 1) {
-      setSlideIndex(currentSlideIndex + 1);
+    if (slideIndex < questions.length - 1) {
+      setSlideIndex(slideIndex + 1);
     }
   };
 
   const handlePrev = () => {
-    if (currentSlideIndex > 0) {
-      setSlideIndex(currentSlideIndex - 1);
+    if (slideIndex > 0) {
+      setSlideIndex(slideIndex - 1);
     }
   };
 
@@ -61,6 +63,10 @@ export function AssessmentFlow() {
 
     // Persist stage to store when Q-ID-02 is answered
     if (currentQuestion.id === "Q-ID-02" && typeof val === "string") {
+      // Stage detail options depend on the stage, so a previous detail answer is no longer valid
+      if (answers["Q-ID-02"] !== undefined && answers["Q-ID-02"] !== val) {
+        clearAnswer("Q-ID-03");
+      }
       if (val === "Anak") setStage("child");
       else if (val === "Remaja") setStage("teenager");
       else if (val === "Dewasa") setStage("adult");
@@ -103,7 +109,7 @@ export function AssessmentFlow() {
     const isDownSwipe = distance < -minSwipeDistance;
 
     if (isUpSwipe) {
-      if (isAnswered() && currentSlideIndex < questions.length - 1) {
+      if (isAnswered() && slideIndex < questions.length - 1) {
         handleNext();
       }
     }
@@ -146,10 +152,10 @@ export function AssessmentFlow() {
         
         {/* Desktop Controls */}
         <div className="absolute bottom-10 left-6 right-6 flex justify-between">
-          <Button variant="outline" onClick={handlePrev} disabled={currentSlideIndex === 0} className="shadow-sm">
+          <Button variant="outline" onClick={handlePrev} disabled={slideIndex === 0} className="shadow-sm">
             <ArrowLeft className="mr-2 h-4 w-4" /> Sebelumnya
           </Button>
-          {currentSlideIndex === questions.length - 1 && isAnswered() ? (
+          {slideIndex === questions.length - 1 && isAnswered() ? (
              <Button onClick={handleFinish} className="shadow-sm bg-success hover:bg-success/90">
                Selesai <ArrowRight className="ml-2 h-4 w-4" />
              </Button>
@@ -177,7 +183,7 @@ export function AssessmentFlow() {
       >
         <div 
           className="flex flex-col h-full w-full transition-transform duration-500 ease-out"
-          style={{ transform: `translateY(-${currentSlideIndex * 100}%)` }}
+          style={{ transform: `translateY(-${slideIndex * 100}%)` }}
         >
           {questions.map((q, index) => {
             const mDynamicQ = { ...q };

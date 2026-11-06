@@ -32,7 +32,6 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/assets/**',
         'src/index.css',
-        'src/App.css',
       ],
 
       // Minimum coverage thresholds – CI fails if coverage REGRESSES below these.

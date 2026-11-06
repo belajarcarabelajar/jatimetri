@@ -22,7 +22,7 @@ const keywordMap: Record<string, string[]> = {
     "Teliti", "Mengatur data/daftar", "Mengatur sesuatu", "Mengatur langkah", 
     "Menghitung", "Mengorganisasi", "Merasa aman", "Ketenangan stabil", 
     "Keamanan tapi lebih terbatas", "Terstruktur", "Melihat data/fakta", 
-    "Bisa dipercaya", "Tekun", "Mengatur tugas"
+    "Bisa dipercaya", "Tekun", "Pengatur tugas"
   ],
   "Human-Centered Contributor": [
     "Peduli", "Suka membantu", "Membantu orang", "Berkomunikasi", "Membimbing", 
@@ -73,6 +73,8 @@ export function evaluateAnswers(answers: Answers): DashboardResult {
   // Stringify and lowercase all answers for broad matching, but we'll also do exact array matching.
   const flatAnswers: string[] = [];
   Object.entries(answers).forEach(([key, val]) => {
+    // Identity answers (name, stage, stage detail) are not evidence for any tendency
+    if (key.startsWith("Q-ID-")) return;
     if (typeof val === 'string') flatAnswers.push(val);
     if (Array.isArray(val)) flatAnswers.push(...val);
     if (typeof val === 'number' && val >= 4) { // scale-1-5 answers where they strongly agree
@@ -119,7 +121,8 @@ export function evaluateAnswers(answers: Answers): DashboardResult {
   }
 
   // Create radar data
-  const radarData = entries.map(([subject, count]) => ({
+  // Keep a fixed axis order so charts are comparable across results
+  const radarData = Object.entries(scores).map(([subject, count]) => ({
     subject,
     A: Math.min(100, count * 15 + 20), // pseudo-normalization for radar
     fullMark: 100
