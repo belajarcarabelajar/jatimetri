@@ -19,5 +19,10 @@
   "disclaimer_desc": "These results are an initial reflection tool, not a psychological diagnosis, standardized assessment, or absolute verdict about your personality. This report measures tendencies based on provided responses and is designed as a starting point to further explore your potential.",
   "fail_pdf": "Failed to generate PDF.",
   "fail_save": "Failed to save report.",
-  "network_error": "Network error occurred:"
+  "network_error": "Network error occurred:",
+  "nav_assessment": "Assessment",
+  "nav_dashboard": "Dashboard",
+  "nav_profile": "Profile",
+  "sign_in": "Sign In",
+  "toggle_menu": "Toggle menu"
 }

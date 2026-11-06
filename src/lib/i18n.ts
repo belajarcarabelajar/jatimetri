@@ -19,15 +19,25 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: 'en',
+    // Questions, tendency descriptions and the PDF are Indonesian-only,
+    // so Indonesian is the default; English is opt-in via the language switcher.
+    fallbackLng: 'id',
     supportedLngs: ['en', 'id'],
     interpolation: {
       escapeValue: false,
     },
     detection: {
-      order: ['navigator', 'localStorage', 'htmlTag'],
+      // Only an explicit choice (saved by the switcher) overrides the default
+      order: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng',
       caches: ['localStorage'],
     },
   });
+
+const syncHtmlLang = (lng: string) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = lng;
+};
+i18n.on('languageChanged', syncHtmlLang);
+if (i18n.language) syncHtmlLang(i18n.language);
 
 export default i18n;

@@ -19,5 +19,10 @@
   "disclaimer_desc": "Hasil ini adalah alat refleksi awal, bukan diagnosis psikologis, penilaian baku, atau vonis mutlak mengenai kepribadian Anda. Laporan ini mengukur kecenderungan berdasarkan respons yang diberikan dan dirancang sebagai titik tolak untuk mengeksplorasi potensi Anda lebih lanjut.",
   "fail_pdf": "Gagal membuat PDF.",
   "fail_save": "Gagal menyimpan laporan.",
-  "network_error": "Terjadi kesalahan jaringan:"
+  "network_error": "Terjadi kesalahan jaringan:",
+  "nav_assessment": "Assessment",
+  "nav_dashboard": "Dashboard",
+  "nav_profile": "Profil",
+  "sign_in": "Masuk",
+  "toggle_menu": "Buka/tutup menu"
 }
