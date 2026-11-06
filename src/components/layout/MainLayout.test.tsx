@@ -77,6 +77,8 @@ describe('MainLayout', () => {
     session.email = 'ani@example.com';
     renderLayout('/dashboard');
 
+    // signOut stays pending: the app must already have left the page (it may be /profile)
+    session.signOut.mockImplementationOnce(() => new Promise(() => {}));
     fireEvent.click(within(desktopNav()).getByRole('button', { name: /Keluar/ }));
 
     expect(session.signOut).toHaveBeenCalled();

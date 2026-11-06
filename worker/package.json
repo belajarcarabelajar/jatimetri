@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@clerk/backend": "^1.0.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.1.1"
   },

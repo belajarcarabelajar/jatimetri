@@ -113,9 +113,10 @@ export default function Profile() {
       }
       resetAssessment();
       try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
-      // The Worker cleared the session cookie; re-read it so the app shows the signed-out state
-      await refresh();
+      // The Worker cleared the session cookie. Leave /profile first, then re-read the session:
+      // the other order makes RequireSession start a new login (the BCB apex would sign the user straight back in).
       navigate('/');
+      await refresh();
     } catch (e) {
       alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

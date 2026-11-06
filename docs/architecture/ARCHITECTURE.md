@@ -6,23 +6,23 @@ deployables:
 | Part | Tech | Hosted on | Source |
 |---|---|---|---|
 | Frontend SPA | React 19, Vite 8, TypeScript, Tailwind 3, shadcn-style UI (Radix) | Cloudflare Pages (`jatimetri`) | `src/`, `public/`, `index.html` |
-| API | Hono on Cloudflare Workers, D1 (SQLite), R2 | Cloudflare Workers (`jatimetri-api`) | `worker/`, `wrangler.toml` |
+| API + login receiver | Hono on Cloudflare Workers, D1 (SQLite), R2 | Worker `jatimetri-api`, routed on the same host: `/api/*`, `/masuk-bcb*` | `worker/`, `wrangler.toml` |
 
-Authentication is handled by [Clerk](https://clerk.com) on both sides: the SPA
-uses `@clerk/clerk-react`, the Worker verifies the session token with
-`@clerk/backend`.
+Authentication is the **BCB Academy unified login** ("login terpadu", repo
+`belajarcarabelajar/bcb`): users log in only at `belajarcarabelajar.com`, which hands
+a short-lived signed token to Jatimetri; the Worker then mints its own first-party
+session cookie. The SPA never sees a token or key. (Clerk was used until 2026-11-06.)
 
 ```
- Browser (SPA)                                   Cloudflare Worker (Hono)
- ┌──────────────────────────────┐   Bearer JWT   ┌──────────────────────────┐
- │ /assessment  ─ zustand store │ ─────────────▶ │ auth middleware (Clerk)  │
- │   (localStorage persisted)   │                │ POST   /api/save-attempt │──▶ D1: users, assessments
- │ /dashboard   ─ scoring, PDF  │                │ GET    /api/reports      │
- │ /profile     ─ history       │                │ DELETE /api/assessments/:id
- └──────────────────────────────┘                │ POST   /api/upload-pdf   │──▶ R2: <userId>/<assessmentId>.pdf
-          │  Clerk JS (sign-in)                  │ DELETE /api/account      │──▶ Clerk Backend API
-          ▼                                      └──────────────────────────┘
-       Clerk
+ Browser                      jatimetri.belajarcarabelajar.com                 belajarcarabelajar.com (apex)
+ ┌───────────────┐  /masuk-bcb/mulai   ┌───────────────────────────┐  303 /masuk/jatimetri?next&s   ┌──────────────┐
+ │ SPA (Pages)   │ ──────────────────▶ │ Worker: state cookie      │ ─────────────────────────────▶ │ login (OTP / │
+ │ useSession()  │                     │                           │ ◀───────────────────────────── │ Google), v1  │
+ │  GET /api/me  │  cookie             │ /masuk-bcb?t&next&s:      │  303 /masuk-bcb?t=<token>&s    │ token issuer │
+ │  /api/*       │ ──────────────────▶ │  state, HMAC, aud, age,   │                                └──────────────┘
+ └───────────────┘                     │  burn nonce → session     │──▶ D1: users, assessments, sessions, sso_nonce
+                                       │ /api/* (session cookie)   │──▶ R2: <email>/<assessmentId>.pdf
+                                       └───────────────────────────┘
 ```
 
 ## Frontend
@@ -34,12 +34,14 @@ uses `@clerk/clerk-react`, the Worker verifies the session token with
 | `/` | `Home` (in `App.tsx`) | no | Landing page |
 | `/assessment` | `features/assessment/Assessment` | no | Full-screen, outside `MainLayout` |
 | `/dashboard` | `features/dashboard/Dashboard` | no (saving needs sign-in) | Result of the current or a historical attempt |
-| `/profile` | `features/profile/Profile` | **yes** (`RedirectToSignIn`) | History, account deletion |
+| `/profile` | `features/profile/Profile` | **yes** (`RequireSession`) | History, delete Jatimetri data |
 | `*` | `components/NotFound` | no | |
 
 `src/main.tsx` wires `ThemeProvider` (next-themes, system theme), `I18nextProvider`
-and `ClerkProvider`. If `VITE_CLERK_PUBLISHABLE_KEY` is missing the whole app
-renders a configuration error instead.
+and `SessionProvider` (`src/lib/auth`: `useSession()` reads `GET /api/me`; `signIn()` is a
+full-page navigation to `/masuk-bcb/mulai?next=…`; `signOut()` posts `/api/logout`).
+API calls go through `src/lib/api.ts` (same origin by default, `credentials: "include"`).
+No environment variables are required.
 
 ### Assessment flow
 
@@ -90,39 +92,47 @@ is stored in localStorage (`i18nextLng`). Only UI chrome is translated
 (`src/locales/{id,en}/translation.json`); questions, tendency descriptions and the
 PDF are Indonesian.
 
-## API (`worker/src/index.ts`)
+## API (`worker/src/app.ts`, entry `worker/src/index.ts`)
 
-- **CORS:** allowlist (production domain, Vite dev/preview ports) plus optional
-  comma-separated `ALLOWED_ORIGINS`.
-- **Auth:** every `/api/*` route requires `Authorization: Bearer <Clerk session token>`;
-  failures return a generic `401`, details are only logged.
-- **Errors:** `app.onError` logs and returns a generic `500`.
+- **Login receiver** (`worker/src/auth/`): `bcb-sso.ts` is a dependency-free copy of the
+  bcb token v1 contract (`HMAC-SHA256(secret, "bcb-sso|v1|jatimetri|email|exp|nonce")`,
+  120 s lifetime, ±30 s skew), verified against bcb's shared fixture
+  `sso-v1.fixture.json`. `session.ts` stores only the SHA-256 of the 32-byte cookie token
+  (`__Host-jatimetri_sesi`, HttpOnly, Secure, SameSite=Lax, 30 days).
+- **Auth:** every `/api/*` route except `/api/logout` requires a live session; otherwise `401`.
+- **CSRF:** SameSite=Lax plus an Origin allowlist for non-GET requests (production domain,
+  Vite dev/preview ports, optional `ALLOWED_ORIGINS`); `/api/logout` requires an Origin.
+- **Errors:** `app.onError` logs only the error name and returns a generic `500`.
 
 | Method & path | Purpose |
 |---|---|
+| `GET /masuk-bcb/mulai?next` | Existing session → `next`; else state cookie + 303 to `belajarcarabelajar.com/masuk/jatimetri` |
+| `GET /masuk-bcb?t&next&s` | Verify state, token, audience, age; burn nonce; create user + session; 303 to safe `next` (400 on any failure, 503 without secret) |
+| `GET /api/me` | `{ email }` |
+| `POST /api/logout` | Delete session, clear cookie (204) |
 | `POST /api/save-attempt` | Upsert user row, insert an assessment, returns `assessmentId` |
 | `GET /api/reports` | The user's assessments, newest first |
 | `DELETE /api/assessments/:id` | Delete one owned assessment and its PDF |
-| `POST /api/upload-pdf` | Store a PDF at `R2://<userId>/<assessmentId>.pdf` |
-| `DELETE /api/account` | Delete all of the user's PDFs, assessments, user row, then the Clerk user (502 if only the Clerk step fails) |
-| `PATCH /api/profile` | Placeholder, no-op |
+| `POST /api/upload-pdf` | Store a PDF for an owned assessment at `R2://<email>/<assessmentId>.pdf` |
+| `DELETE /api/account` | Delete all Jatimetri data (PDFs, assessments, user row, sessions) and sign out; the BCB account is untouched |
 
 ### Data model (D1, `worker/src/db/schema.ts`, migrations in `worker/drizzle/`)
 
-- `users(id TEXT PK — Clerk user id, email, created_at)`
+- `users(id TEXT PK — normalised BCB email, email, created_at)`
 - `assessments(id TEXT PK, user_id → users.id, stage, dominance_pattern,
   radar_data JSON, tendencies JSON, created_at)`
+- `sessions(id_hash PK, email, created_at, expires_at)`, `sso_nonce(nonce PK, expires_at)`
+  (`0001_bcb_sso.sql`, idempotent, applied with `wrangler d1 execute`)
 
-Raw answers are sent by the client but **not** stored.
+Raw answers are sent by the client but **not** stored. Rows created under Clerk user ids
+before 2026-11-06 are left in place but no longer reachable.
 
 ## Configuration
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `VITE_CLERK_PUBLISHABLE_KEY` | `.env.local` / Pages build env | Clerk frontend key (required) |
-| `VITE_API_URL` | `.env.local` / Pages build env | Worker base URL (defaults to `http://localhost:8787`) |
-| `CLERK_PUBLISHABLE_KEY` | `wrangler.toml` `[vars]` | Clerk key for the Worker |
-| `CLERK_SECRET_KEY` | `.dev.vars` / `wrangler secret put` | Clerk secret for the Worker |
+| `VITE_API_URL` | `.env.local` / Pages build env (optional) | API base URL; default same origin |
+| `BCB_SSO_RAHASIA` | `.dev.vars` / `wrangler secret put` | Hand-off secret, same value as `SSO_RAHASIA_JATIMETRI` on the BCB apex |
 | `ALLOWED_ORIGINS` | Worker vars (optional) | Extra CORS origins |
 | `DB`, `REPORTS_BUCKET` | `wrangler.toml` bindings | D1 database, R2 bucket |
 
@@ -133,11 +143,11 @@ Security headers and a report-only CSP for the SPA live in `public/_headers`.
 - **Package manager:** Bun (version in `.bun-version`), lockfiles `bun.lock` and
   `worker/bun.lock`.
 - **Scripts:** `dev`, `build` (`tsc -b && vite build`), `lint`, `test`,
-  `test:coverage`, `worker:dev`, `worker:deploy`, `worker:typecheck`.
+  `test:coverage`, `worker:dev`, `worker:deploy`, `worker:typecheck`, `worker:test`.
 - **Tests:** Vitest + Testing Library (jsdom), colocated `*.test.ts(x)` plus
   `tests/unit/`. Coverage thresholds in `vitest.config.ts`.
 - **CI** (`.github/workflows/ci.yml`, on `main`): lint → tests with coverage →
-  build → worker type-check. No automatic deploy.
+  build → worker type-check → worker tests. No automatic deploy.
 - **Deploy:** `scripts/deploy-website.sh` (build + `wrangler pages deploy`) and
   `bun run worker:deploy`.
 - **Dependencies:** Dependabot weekly (`.github/dependabot.yml`).

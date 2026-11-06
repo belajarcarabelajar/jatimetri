@@ -14,7 +14,8 @@
     "test:coverage": "vitest run --coverage",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
-    "worker:typecheck": "tsc --noEmit -p worker"
+    "worker:typecheck": "tsc --noEmit -p worker",
+    "worker:test": "cd worker && bun test"
   },
   "dependencies": {
     "@fontsource/outfit": "^5.3.0",

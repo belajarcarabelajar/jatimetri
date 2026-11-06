@@ -84,3 +84,6 @@ jobs:
 
       - name: Type-check worker
         run: bun run worker:typecheck
+
+      - name: Test worker (BCB login, API)
+        run: bun run worker:test

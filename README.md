@@ -19,7 +19,7 @@ The project is structured as a monorepo containing two primary layers:
 - `src/components/` - Shared UI and layout components.
 - `src/App.tsx` - Application routes (React Router).
 - `src/data/` - Question bank (`questions/v1-bank.ts`) and scoring (`scoring/scoring-matrix.ts`).
-- `worker/src/` - Backend API entry point (`index.ts`) and database schema (`db/`).
+- `worker/src/` - Worker entry (`index.ts`), app and routes (`app.ts`), BCB login receiver and sessions (`auth/`), database schema (`db/`); tests in `worker/test/`.
 
 ## Prerequisites
 
@@ -52,13 +52,15 @@ calls the API with `credentials: "include"` via `src/lib/api.ts`, and signs out 
 the BCB account itself is managed at [belajarcarabelajar.com/account](https://belajarcarabelajar.com/account).
 
 ### Backend (`.dev.vars`)
-Create a `.dev.vars` file in the root directory (next to `wrangler.toml`) for local backend secrets:
+The Worker needs one secret, shared with the BCB apex (where it is called `SSO_RAHASIA_JATIMETRI`, program `jatimetri`
+in `belajarcarabelajar/bcb` `packages/data/src/akun/sso-program.ts`). For local development create `.dev.vars`
+next to `wrangler.toml`:
 ```env
-# Your Clerk Secret Key
-CLERK_SECRET_KEY=sk_test_...
+# >= 32 characters; any value works locally
+BCB_SSO_RAHASIA=change-me-local-only-0123456789abcdef
 ```
-
-*Note: The backend also relies on `CLERK_PUBLISHABLE_KEY` configured within the `[vars]` block inside `wrangler.toml`.*
+Without it, `/masuk-bcb` answers 503 (fail closed). The apex always hands back to the production origin, so a
+real login only completes on `jatimetri.belajarcarabelajar.com`; locally the app runs signed out.
 
 ## Installation & Setup
 
@@ -106,6 +108,8 @@ The frontend uses Vitest for testing. Run the following commands from the root d
 - Run tests in watch mode: `bun run test:watch`
 - Generate test coverage: `bun run test:coverage` (CI enforces the thresholds in `vitest.config.ts`)
 - Lint: `bun run lint`
+- Worker (BCB login receiver, sessions, API; Bun + in-memory SQLite): `bun run worker:test`
+- Worker type-check: `bun run worker:typecheck`
 
 ## Build & Deployment
 
@@ -125,7 +129,13 @@ To build and deploy to Cloudflare Pages (project `jatimetri`):
 Set `SKIP_BUILD=1` to deploy the existing `dist/`. CI does not deploy automatically.
 
 ### Backend (API)
-To deploy the Cloudflare worker to your production environment (run from the root, after `wrangler login`):
+The Worker is routed on the same host as the Pages site (`jatimetri.belajarcarabelajar.com/api/*` and
+`/masuk-bcb*`, see `routes` in `wrangler.toml`). First-time setup / after schema changes (run from the root, after `wrangler login`):
+```bash
+bunx wrangler d1 execute inner_potential_db --remote --file worker/drizzle/0001_bcb_sso.sql
+bunx wrangler secret put BCB_SSO_RAHASIA   # same value as SSO_RAHASIA_JATIMETRI on the BCB apex
+```
+Then deploy:
 ```bash
 bun run worker:deploy
 ```

@@ -15,8 +15,10 @@ export function MainLayout() {
 
   const handleSignOut = async () => {
     setIsMobileMenuOpen(false);
-    await signOut();
+    // Leave first: on a protected page (/profile) a signed-out state would otherwise
+    // make RequireSession start a new login before the navigation happens.
     navigate("/");
+    await signOut();
   };
 
   const handleSignIn = () => {

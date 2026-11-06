@@ -140,6 +140,8 @@ describe('Profile', () => {
     expect(resetAssessmentMock).toHaveBeenCalled();
     // The Worker cleared the cookie; the session is re-read (→ signed out), not logged out separately
     expect(session.refresh).toHaveBeenCalled();
+    // Leave /profile before the session flips to signed out, or RequireSession starts a new login
+    expect(navigateMock.mock.invocationCallOrder[0]).toBeLessThan(session.refresh.mock.invocationCallOrder.at(-1)!);
     expect(session.signOut).not.toHaveBeenCalled();
   });
 
