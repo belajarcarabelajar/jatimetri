@@ -117,6 +117,12 @@ export default function Profile() {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
+      if (res.status === 502) {
+        // Worker removed all data but Clerk refused to delete the login itself
+        setReports([]);
+        alert("Semua data Anda sudah dihapus, tetapi akun login belum berhasil dihapus. Silakan coba lagi nanti.");
+        return;
+      }
       if (!res.ok) {
         alert("Gagal menghapus akun. Silakan coba lagi atau hubungi kami.");
         return;

@@ -23,8 +23,32 @@ interface R2PutOptions {
   httpMetadata?: { contentType?: string };
 }
 
+interface R2Objects {
+  objects: { key: string }[];
+  truncated: boolean;
+  cursor?: string;
+}
+
 interface R2Bucket {
   put(key: string, value: ArrayBuffer, options?: R2PutOptions): Promise<unknown>;
+  list(options?: { prefix?: string; cursor?: string; limit?: number }): Promise<R2Objects>;
+  delete(keys: string | string[]): Promise<void>;
+}
+
+// Deletes every object under `prefix`, page by page (R2 list returns at most 1000 keys).
+async function deleteR2Prefix(bucket: R2Bucket, prefix: string): Promise<number> {
+  let deleted = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list({ prefix, cursor });
+    const keys = page.objects.map((o) => o.key);
+    if (keys.length > 0) {
+      await bucket.delete(keys);
+      deleted += keys.length;
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return deleted;
 }
 
 type Bindings = {
@@ -205,7 +229,36 @@ app.delete('/api/assessments/:id', async (c) => {
     "DELETE FROM assessments WHERE id = ? AND user_id = ?"
   ).bind(assessmentId, userId).run();
 
+  // Remove the attached PDF too (no-op if none was uploaded)
+  await c.env.REPORTS_BUCKET.delete(`${userId}/${assessmentId}.pdf`);
+
   return c.json({ success: true });
+});
+
+// Create Worker API endpoint: DELETE /api/account
+// Permanently removes everything stored for the signed-in user: report PDFs (R2),
+// assessments and the user row (D1), and finally the Clerk account itself.
+// Data goes first so a Clerk failure never leaves orphaned personal data behind.
+app.delete('/api/account', async (c) => {
+  const userId = c.get('userId');
+  const DB = c.env.DB;
+
+  const pdfsDeleted = await deleteR2Prefix(c.env.REPORTS_BUCKET, `${userId}/`);
+  await DB.prepare("DELETE FROM assessments WHERE user_id = ?").bind(userId).run();
+  await DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run();
+
+  const clerkClient = createClerkClient({
+    secretKey: c.env.CLERK_SECRET_KEY,
+    publishableKey: c.env.CLERK_PUBLISHABLE_KEY || c.env.VITE_CLERK_PUBLISHABLE_KEY,
+  });
+  try {
+    await clerkClient.users.deleteUser(userId);
+  } catch (error) {
+    console.error(`Data for ${userId} deleted but Clerk user deletion failed:`, thrownMessage(error));
+    return c.json({ error: "Account data deleted, but the login account could not be removed" }, 502);
+  }
+
+  return c.json({ success: true, pdfsDeleted });
 });
 
 // Create Worker API endpoint: POST /api/upload-pdf

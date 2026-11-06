@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy"
+    "worker:deploy": "wrangler deploy",
+    "worker:typecheck": "tsc --noEmit -p worker"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.11",
