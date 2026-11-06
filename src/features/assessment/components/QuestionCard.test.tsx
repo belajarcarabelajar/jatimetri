@@ -197,4 +197,12 @@ describe('QuestionCard', () => {
       expect(handleNext).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('forwards headingRef to a programmatically focusable question heading', () => {
+    const headingRef = React.createRef<HTMLHeadingElement>();
+    render(<QuestionCard question={defaultQuestion} onAnswer={vi.fn()} headingRef={headingRef} />);
+    const heading = screen.getByRole('heading', { name: 'Sample prompt' });
+    expect(headingRef.current).toBe(heading);
+    expect(heading).toHaveAttribute('tabindex', '-1');
+  });
 });

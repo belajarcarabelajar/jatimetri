@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Question, QuestionOption } from "@/types/assessment";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,9 +13,11 @@ interface Props {
   currentAnswer?: string | number | boolean | string[];
   onAnswer: (value: string | number | boolean | string[]) => void;
   onNext?: () => void;
+  /** Ref to the question heading, so the flow can move focus to it after a slide change. */
+  headingRef?: Ref<HTMLHeadingElement>;
 }
 
-export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Props) {
+export function QuestionCard({ question, currentAnswer, onAnswer, onNext, headingRef }: Props) {
   
   const handleRankingToggle = (val: string) => {
     const arr = (Array.isArray(currentAnswer) ? currentAnswer : []) as string[];
@@ -178,7 +181,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext }: Prop
           </span>
         </div>
         {/* We expect Assessment.tsx to inject the correct prompt string into question.prompt before passing down */}
-        <CardTitle className="text-3xl md:text-4xl leading-snug text-foreground font-heading tracking-tight">{question.prompt}</CardTitle>
+        <CardTitle ref={headingRef} tabIndex={-1} className="focus:outline-none text-3xl md:text-4xl leading-snug text-foreground font-heading tracking-tight">{question.prompt}</CardTitle>
         {question.helperText && (
           <CardDescription className="text-lg mt-3 text-muted-foreground">{question.helperText}</CardDescription>
         )}

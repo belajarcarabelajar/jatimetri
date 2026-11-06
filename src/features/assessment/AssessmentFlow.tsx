@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAssessmentStore } from "@/store/useAssessmentStore";
 import { v1Bank } from "@/data/questions/v1-bank";
@@ -20,6 +20,31 @@ export function AssessmentFlow() {
   const progress = ((slideIndex + 1) / questions.length) * 100;
 
   const currentQuestion = questions[slideIndex];
+  const progressLabel = `Pertanyaan ${slideIndex + 1} dari ${questions.length}`;
+
+  const desktopHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mobileHeadingRef = useRef<HTMLHeadingElement>(null);
+  const lastSlideRef = useRef(slideIndex);
+
+  // After a slide change (not on first mount), land keyboard/screen-reader users on the new question
+  useEffect(() => {
+    if (lastSlideRef.current === slideIndex) return;
+    lastSlideRef.current = slideIndex;
+    const isDesktop =
+      typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 768px)").matches;
+    const heading = isDesktop ? desktopHeadingRef.current : mobileHeadingRef.current;
+    if (!heading) return;
+    // Leave focus alone if the new question already focused its own field (e.g. autoFocus on the name input)
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active.matches("input, textarea, select") &&
+      heading.closest("[data-slide]")?.contains(active)
+    ) {
+      return;
+    }
+    heading.focus({ preventScroll: true });
+  }, [slideIndex]);
 
   // Determine stage from Q-ID-02
   const stageRaw = answers["Q-ID-02"] as string;
@@ -126,6 +151,15 @@ export function AssessmentFlow() {
         <div className="flex items-center justify-between mb-3 max-w-5xl mx-auto">
           <span className="text-sm font-medium text-muted-foreground">Progress: {Math.round(progress)}%</span>
           <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrev}
+              disabled={slideIndex === 0}
+              className="md:hidden text-muted-foreground hover:text-primary"
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Kembali
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-muted-foreground hover:text-primary">
               Keluar
             </Button>
@@ -135,14 +169,20 @@ export function AssessmentFlow() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto">
-          <Progress value={progress} className="h-2 bg-primary-soft" />
+          <Progress
+            value={progress}
+            aria-label={progressLabel}
+            getValueLabel={() => progressLabel}
+            className="h-2 bg-primary-soft"
+          />
         </div>
       </div>
 
       {/* Desktop View */}
       <div className="hidden md:flex flex-1 items-center justify-center p-6 relative w-full max-w-5xl mx-auto">
-        <div className="w-full">
+        <div className="w-full" data-slide>
           <QuestionCard 
+            headingRef={desktopHeadingRef}
             question={dynamicQuestion} 
             currentAnswer={answers[currentQuestion.id]} 
             onAnswer={handleAnswer} 
@@ -193,13 +233,18 @@ export function AssessmentFlow() {
               if (activeStage === "teen") mDynamicQ.options = q.teenOptions;
               if (activeStage === "adult") mDynamicQ.options = q.adultOptions;
             }
+            const isCurrent = index === slideIndex;
             return (
               <div 
                 key={q.id} 
+                data-slide
+                inert={!isCurrent}
+                aria-hidden={isCurrent ? undefined : true}
                 className="h-full w-full flex-shrink-0 flex items-center justify-center p-4 overflow-y-auto"
               >
                 <div className="w-full my-auto py-8">
                   <QuestionCard 
+                    headingRef={isCurrent ? mobileHeadingRef : undefined}
                     question={mDynamicQ} 
                     currentAnswer={answers[q.id]} 
                     onAnswer={(val) => {
