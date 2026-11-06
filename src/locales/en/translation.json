@@ -24,5 +24,9 @@
   "nav_dashboard": "Dashboard",
   "nav_profile": "Profile",
   "sign_in": "Sign In",
-  "toggle_menu": "Toggle menu"
+  "toggle_menu": "Toggle menu",
+  "no_result_title": "No results yet",
+  "no_result_desc": "Answer the assessment questions first so we can map your tendencies and potential.",
+  "start_assessment": "Start Assessment",
+  "continue_assessment": "Continue Assessment"
 }

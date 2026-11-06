@@ -6,7 +6,7 @@ import { RadarChartPlot } from "./components/RadarChartPlot";
 import { SpectrumSlider } from "./components/SpectrumSlider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download, Save } from "lucide-react";
+import { Loader2, Download, Save, ClipboardList, ArrowRight } from "lucide-react";
 import { useAuth, SignInButton } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { ReportPDF } from "../pdf/ReportPDF";
@@ -53,6 +53,12 @@ export default function Dashboard() {
     const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Identity answers (Q-ID-*) carry no scoring evidence. Without any scored answer the
+  // scoring matrix would still produce a default pattern, which must not be shown as a result.
+  const answerKeys = Object.keys(answers);
+  const hasScoredAnswers = answerKeys.some((key) => !key.startsWith("Q-ID-"));
+  const isEmpty = !historicalReport && !hasScoredAnswers;
 
   const liveResult = evaluateAnswers(answers, stage);
   const result = historicalReport ? {
@@ -158,6 +164,29 @@ export default function Dashboard() {
       setGeneratingPdf(false);
     }
   };
+
+  if (isEmpty) {
+    const hasStarted = answerKeys.length > 0;
+    return (
+      <div className="flex-1 flex items-center justify-center bg-surface p-4 md:p-8">
+        <Card className="max-w-lg w-full shadow-md border-border/60 text-center">
+          <CardHeader>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <ClipboardList className="h-7 w-7 text-primary" aria-hidden="true" />
+            </div>
+            <CardTitle className="text-2xl">{t('no_result_title')}</CardTitle>
+            <CardDescription className="text-base leading-relaxed">{t('no_result_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button size="lg" onClick={() => navigate('/assessment')}>
+              {t(hasStarted ? 'continue_assessment' : 'start_assessment')}
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -24,5 +24,9 @@
   "nav_dashboard": "Dashboard",
   "nav_profile": "Profil",
   "sign_in": "Masuk",
-  "toggle_menu": "Buka/tutup menu"
+  "toggle_menu": "Buka/tutup menu",
+  "no_result_title": "Belum ada hasil",
+  "no_result_desc": "Jawab pertanyaan assessment terlebih dahulu agar kami dapat memetakan kecenderungan dan potensimu.",
+  "start_assessment": "Mulai Assessment",
+  "continue_assessment": "Lanjutkan Assessment"
 }

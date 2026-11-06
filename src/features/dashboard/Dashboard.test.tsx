@@ -6,8 +6,9 @@ import { useAssessmentStore } from '@/store/useAssessmentStore';
 import { generatePDF } from '../pdf/generatePDF';
 
 // Mock navigation
+const mockNavigate = vi.hoisted(() => vi.fn());
 vi.mock('react-router', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
 }));
 
 // Mock Clerk
@@ -85,6 +86,64 @@ function renderLoaded() {
     vi.useRealTimers();
   }
 }
+
+describe('Dashboard – empty state', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockNavigate.mockClear();
+  });
+
+  function mockAnswers(answers: Record<string, unknown>) {
+    vi.mocked(useAssessmentStore).mockReturnValue({ answers, stage: null, userName: '' });
+  }
+
+  it('shows an empty state instead of a default result when there are no answers', () => {
+    mockAnswers({});
+    render(<Dashboard />);
+
+    expect(screen.getByText('Belum ada hasil')).toBeInTheDocument();
+    expect(screen.queryByText('Test Pattern')).not.toBeInTheDocument();
+    expect(screen.queryByText('Laporan Jatimetri')).not.toBeInTheDocument();
+    // Neither the loading splash nor any save/download action is offered
+    expect(screen.queryByText('Menganalisis Pola dan Potensi...')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Unduh PDF/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Simpan|Masuk/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sign-in-btn')).not.toBeInTheDocument();
+    expect(document.getElementById('pdf-container')).toBeNull();
+  });
+
+  it('offers to start the assessment and navigates to /assessment', () => {
+    mockAnswers({});
+    render(<Dashboard />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Mulai Assessment/ }));
+    expect(mockNavigate).toHaveBeenCalledWith('/assessment');
+  });
+
+  it('offers to continue when only identity (Q-ID-*) answers exist', () => {
+    mockAnswers({ 'Q-ID-01': 'Budi', 'Q-ID-02': 'Dewasa' });
+    render(<Dashboard />);
+
+    expect(screen.getByText('Belum ada hasil')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Lanjutkan Assessment/ }));
+    expect(mockNavigate).toHaveBeenCalledWith('/assessment');
+  });
+
+  it('still shows a historical report even when the store has no answers', () => {
+    sessionStorage.setItem('view-historical-report', JSON.stringify({
+      dominancePattern: 'Historical Pattern',
+      radarData: [{ subject: 'Test', A: 50, fullMark: 100 }],
+      tendencies: [],
+      stage: 'adult',
+    }));
+    mockAnswers({});
+    renderLoaded();
+
+    expect(screen.queryByText('Belum ada hasil')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Historical Pattern')[0]).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeInTheDocument();
+  });
+});
 
 describe('Dashboard – PDF download', () => {
   beforeEach(() => {
