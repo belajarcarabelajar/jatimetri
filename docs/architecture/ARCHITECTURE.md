@@ -103,7 +103,7 @@ PDF are Indonesian.
   (`__Host-jatimetri_sesi`, HttpOnly, Secure, SameSite=Lax, 30 days).
 - **Auth:** every `/api/*` route except `/api/logout` requires a live session; otherwise `401`.
 - **CSRF:** SameSite=Lax plus an Origin allowlist for non-GET requests (production domain,
-  Vite dev/preview ports, optional `ALLOWED_ORIGINS`); `/api/logout` requires an Origin.
+  Vite dev/preview ports only when the Worker runs locally, optional `ALLOWED_ORIGINS`); `/api/logout` requires an Origin.
 - **Errors:** `app.onError` logs only the error name and returns a generic `500`.
 
 | Method & path | Purpose |

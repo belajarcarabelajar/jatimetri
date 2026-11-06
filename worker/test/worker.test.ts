@@ -19,8 +19,9 @@ function setup(o: { secret?: string | undefined } = {}) {
   let n = 0;
   const app = createApp({ now: () => NOW, random: (len) => new Uint8Array(len).fill(++n) });
   const env = { DB, REPORTS_BUCKET: R2, BCB_SSO_RAHASIA: 'secret' in o ? o.secret : SECRET };
-  const req = (path: string, init: RequestInit = {}) => app.request(`${ORIGIN}${path}`, init, env);
-  return { DB, R2, env, req };
+  const reqAt = (url: string, init: RequestInit = {}) => app.request(url, init, env);
+  const req = (path: string, init: RequestInit = {}) => reqAt(`${ORIGIN}${path}`, init);
+  return { DB, R2, env, req, reqAt };
 }
 
 const cookieValue = (res: Response, name: string) =>
@@ -212,6 +213,58 @@ describe('API with session', () => {
     expect(s.DB.raw.prepare('SELECT COUNT(*) AS n FROM assessments').get()).toEqual({ n: 0 });
     expect(s.DB.raw.prepare('SELECT COUNT(*) AS n FROM sessions').get()).toEqual({ n: 0 });
     expect((await s.req('/api/me', { headers: { cookie } })).status).toBe(401);
+  });
+
+  // A real Cloudflare edge request always carries the client's public IP.
+  const edge = { 'cf-connecting-ip': '203.0.113.7' };
+
+  test('in production, localhost Origins get no CORS header', async () => {
+    const s = setup();
+    const cookie = await signedIn(s);
+    for (const origin of ['http://localhost:5173', 'http://localhost:4173']) {
+      const me = await s.req('/api/me', { headers: { ...edge, cookie, origin } });
+      expect(me.headers.get('access-control-allow-origin')).toBeNull();
+      const preflight = await s.req('/api/logout', { method: 'OPTIONS', headers: { ...edge, origin, 'access-control-request-method': 'POST' } });
+      expect(preflight.headers.get('access-control-allow-origin')).toBeNull();
+    }
+  });
+
+  test('in production, localhost Origins cannot mutate or log out', async () => {
+    const s = setup();
+    const cookie = await signedIn(s);
+    for (const origin of ['http://localhost:5173', 'http://localhost:4173']) {
+      const save = await s.req('/api/save-attempt', { method: 'POST', headers: { ...edge, cookie, origin, 'content-type': 'application/json' }, body: '{}' });
+      expect(save.status).toBe(403);
+      expect((await s.req('/api/logout', { method: 'POST', headers: { ...edge, cookie, origin } })).status).toBe(403);
+    }
+    expect((await s.req('/api/me', { headers: { cookie } })).status).toBe(200);
+  });
+
+  test('in production, the production Origin keeps its CORS header', async () => {
+    const s = setup();
+    const res = await s.req('/api/me', { headers: { 'cf-connecting-ip': '203.0.113.7', origin: ORIGIN } });
+    expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+  });
+
+  test('a Worker on localhost accepts the Vite dev origin for CORS and logout', async () => {
+    const s = setup();
+    const cookie = await signedIn(s);
+    const origin = 'http://localhost:5173';
+    const me = await s.reqAt('http://localhost:8787/api/me', { headers: { cookie, origin } });
+    expect(me.headers.get('access-control-allow-origin')).toBe(origin);
+    expect((await s.reqAt('http://localhost:8787/api/logout', { method: 'POST', headers: { cookie, origin } })).status).toBe(204);
+  });
+
+  // wrangler dev rewrites request.url to the first route's host and sets CF-Connecting-IP from the socket.
+  test('under wrangler dev (route host, loopback client IP) the Vite origins are accepted', async () => {
+    for (const ip of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      const s = setup();
+      const cookie = await signedIn(s);
+      const origin = 'http://localhost:5173';
+      const local = { 'cf-connecting-ip': ip, cookie, origin };
+      expect((await s.req('/api/me', { headers: local })).headers.get('access-control-allow-origin')).toBe(origin);
+      expect((await s.req('/api/logout', { method: 'POST', headers: local })).status).toBe(204);
+    }
   });
 
   test("a user cannot delete someone else's assessment", async () => {

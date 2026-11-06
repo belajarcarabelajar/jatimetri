@@ -94,7 +94,7 @@ Open a terminal in the root directory (where `wrangler.toml` lives) and start th
 ```bash
 bun run worker:dev
 ```
-The API only answers CORS requests from `https://jatimetri.belajarcarabelajar.com`, `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). To allow more origins (e.g. a Pages preview URL), set `ALLOWED_ORIGINS` to a comma-separated list in `.dev.vars` locally or as a worker variable/secret in production. CORS does not carry the session cookie: from another site the API only answers as signed out.
+The API only answers CORS requests from `https://jatimetri.belajarcarabelajar.com`, plus `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview) when the Worker itself runs locally (its URL host or the `CF-Connecting-IP` header is a loopback address, as under `wrangler dev`); the deployed Worker refuses the localhost origins. To allow more origins (e.g. a Pages preview URL), set `ALLOWED_ORIGINS` to a comma-separated list in `.dev.vars` locally or as a worker variable/secret in production. CORS does not carry the session cookie: from another site the API only answers as signed out.
 
 **Start the Frontend**
 Open a separate terminal in the root directory and start Vite:
@@ -142,3 +142,4 @@ Then deploy:
 ```bash
 bun run worker:deploy
 ```
+Deploy with `bun run worker:deploy` (plain `wrangler deploy`, no `--env`). In `wrangler.toml` the `routes` exist only at the top level, not under `[env.production]`, so `wrangler deploy --env production` would publish a separate Worker with no routes. Secrets follow the same rule: `wrangler secret put` without `--env` writes to the top-level Worker, which is the one serving the routes.

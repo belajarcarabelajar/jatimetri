@@ -50,7 +50,7 @@ export interface R2Bucket {
 export type Bindings = {
   // Shared secret with the BCB apex (`SSO_RAHASIA_JATIMETRI` there), >= 32 chars. `wrangler secret put BCB_SSO_RAHASIA`.
   BCB_SSO_RAHASIA?: string;
-  // Extra allowed browser origins beyond DEFAULT_ALLOWED_ORIGINS, comma-separated (e.g. a preview deploy URL).
+  // Extra allowed browser origins beyond PRODUCTION_ORIGIN, comma-separated (e.g. a preview deploy URL).
   ALLOWED_ORIGINS?: string;
   DB: D1Database;
   REPORTS_BUCKET: R2Bucket;
@@ -88,22 +88,30 @@ const CLEAR_STATE_COOKIE = `${STATE_COOKIE}=; ${COOKIE_ATTRS}; Max-Age=0`;
 const RE_STATE = /^[A-Za-z0-9_-]{43}$/;
 const RE_ASSESSMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-const DEFAULT_ALLOWED_ORIGINS = [
-  'https://jatimetri.belajarcarabelajar.com',
+const PRODUCTION_ORIGIN = 'https://jatimetri.belajarcarabelajar.com';
+const LOCAL_DEV_ORIGINS = [
   'http://localhost:5173', // vite dev (proxies /api and /masuk-bcb here)
   'http://localhost:4173', // vite preview
 ];
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1', '::ffff:127.0.0.1']);
 
-function allowedOrigins(extra: string | undefined): string[] {
-  const fromEnv = (extra ?? '')
+// `wrangler dev` rewrites request.url to the first route's host (the production host), so the URL alone
+// cannot tell; it does set CF-Connecting-IP from the local socket. On Cloudflare's edge that header is the
+// client's address, never loopback, and a browser page cannot add it without a preflight that carries no value.
+function isLocalRequest(c: Context<AppEnv>): boolean {
+  return LOOPBACK.has(new URL(c.req.url).hostname) || LOOPBACK.has(c.req.header('cf-connecting-ip') ?? '');
+}
+
+function allowedOrigins(c: Context<AppEnv>): string[] {
+  const fromEnv = (c.env.ALLOWED_ORIGINS ?? '')
     .split(',')
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
-  return [...DEFAULT_ALLOWED_ORIGINS, ...fromEnv];
+  return [PRODUCTION_ORIGIN, ...(isLocalRequest(c) ? LOCAL_DEV_ORIGINS : []), ...fromEnv];
 }
 
 function isAllowedOrigin(c: Context<AppEnv>, origin: string): boolean {
-  return origin === new URL(c.req.url).origin || allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin);
+  return origin === new URL(c.req.url).origin || allowedOrigins(c).includes(origin);
 }
 
 // Deletes every object under `prefix`, page by page (R2 list returns at most 1000 keys).
@@ -163,7 +171,7 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
   // CORS only affects requests from another origin (ALLOWED_ORIGINS, e.g. local development). Those never
   // carry the SameSite=Lax session cookie, so the SPA must call the API on its own origin; same-origin requests ignore CORS.
   app.use('/api/*', cors({
-    origin: (origin, c) => (allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin) ? origin : null),
+    origin: (origin, c) => (allowedOrigins(c).includes(origin) ? origin : null),
     allowHeaders: ['Content-Type'],
     allowMethods: ['POST', 'GET', 'OPTIONS', 'DELETE'],
     credentials: true,
