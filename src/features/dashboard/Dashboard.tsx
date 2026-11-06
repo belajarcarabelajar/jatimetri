@@ -10,7 +10,6 @@ import { Loader2, Download, Save } from "lucide-react";
 import { useAuth, SignInButton } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { ReportPDF } from "../pdf/ReportPDF";
-import { generatePDF } from "../pdf/generatePDF";
 
 type HistoricalReport = {
   dominancePattern: string;
@@ -106,6 +105,8 @@ export default function Dashboard() {
   const handleDownloadPDF = async () => {
     setGeneratingPdf(true);
     try {
+      // html2canvas + jspdf are heavy; load them only when a download is requested
+      const { generatePDF } = await import("../pdf/generatePDF");
       const safeUserName = userName || "Pengguna";
       const pdfBlob = await generatePDF("pdf-container", `Inner_Potential_Assessment_${safeUserName}_${new Date().toISOString().split('T')[0]}.pdf`);
       
