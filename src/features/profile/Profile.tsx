@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { useAuth, useUser } from "@clerk/clerk-react";
+import { useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useTranslation } from "react-i18next";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Loader2, AlertCircle, Settings, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAssessmentStore } from "@/store/useAssessmentStore";
 import type { DashboardResult, Tendency } from "@/data/scoring/scoring-matrix";
+
+const DELETE_CONFIRM_WORD = "HAPUS";
 
 type Report = {
   id: string;
@@ -31,6 +35,8 @@ export default function Profile() {
   const { i18n } = useTranslation();
   const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
+  const { signOut } = useClerk();
+  const resetAssessment = useAssessmentStore((s) => s.resetAssessment);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,6 +52,9 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingAccountDelete, setConfirmingAccountDelete] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     const fetchReports = async () => {
@@ -98,6 +107,31 @@ export default function Profile() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD) return;
+    setDeletingAccount(true);
+    try {
+      const token = await getToken();
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+      const res = await fetch(`${API_URL}/api/account`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        alert("Gagal menghapus akun. Silakan coba lagi atau hubungi kami.");
+        return;
+      }
+      resetAssessment();
+      try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
+      await signOut();
+      navigate('/');
+    } catch (e) {
+      alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <div className="flex-1 bg-background p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -123,12 +157,51 @@ export default function Profile() {
               </div>
             </div>
             
-            <div className="flex justify-between items-center p-4 border rounded-lg border-destructive/20 bg-destructive/5">
-              <div>
-                <h3 className="font-semibold text-destructive">Hapus Akun & Data</h3>
-                <p className="text-sm text-muted-foreground">Semua data riwayat akan dihapus permanen.</p>
+            <div className="p-4 border rounded-lg border-destructive/20 bg-destructive/5 space-y-4">
+              <div className="flex justify-between items-center gap-4">
+                <div>
+                  <h3 className="font-semibold text-destructive">Hapus Akun & Data</h3>
+                  <p className="text-sm text-muted-foreground">Akun, semua riwayat assessment, dan PDF laporan akan dihapus permanen.</p>
+                </div>
+                {!confirmingAccountDelete && (
+                  <Button variant="destructive" size="sm" onClick={() => setConfirmingAccountDelete(true)}>
+                    <Trash2 className="w-4 h-4 mr-2"/> Hapus
+                  </Button>
+                )}
               </div>
-              <Button variant="destructive" size="sm"><Trash2 className="w-4 h-4 mr-2"/> Hapus</Button>
+              {confirmingAccountDelete && (
+                <div className="space-y-3">
+                  <label htmlFor="delete-account-confirm" className="text-sm font-medium block">
+                    Ketik <strong>{DELETE_CONFIRM_WORD}</strong> untuk konfirmasi. Tindakan ini tidak bisa dibatalkan.
+                  </label>
+                  <Input
+                    id="delete-account-confirm"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    autoComplete="off"
+                    disabled={deletingAccount}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteAccount}
+                      disabled={deletingAccount || confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD}
+                    >
+                      {deletingAccount ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2"/>}
+                      Hapus Akun Permanen
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setConfirmingAccountDelete(false); setConfirmText(""); }}
+                      disabled={deletingAccount}
+                    >
+                      Batal
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
