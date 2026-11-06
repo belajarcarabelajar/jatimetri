@@ -44,8 +44,8 @@ VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
 
 `VITE_API_URL` falls back to `http://localhost:8787`, so it **must** be set for production builds.
 
-### Backend (`worker/.dev.vars`)
-Create a `.dev.vars` file in the `worker/` directory for local backend secrets:
+### Backend (`.dev.vars`)
+Create a `.dev.vars` file in the root directory (next to `wrangler.toml`) for local backend secrets:
 ```env
 # Your Clerk Secret Key
 CLERK_SECRET_KEY=sk_test_...
