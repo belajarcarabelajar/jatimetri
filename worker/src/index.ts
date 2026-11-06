@@ -67,7 +67,7 @@ const app = new Hono<{ Bindings: Bindings, Variables: { userId: string } }>();
 
 app.onError((err, c) => {
   console.error(`Error processing ${c.req.method} ${c.req.url}:`, err);
-  return c.json({ error: "Internal Server Error", details: err.message, stack: err.stack }, 500);
+  return c.json({ error: "Internal Server Error" }, 500);
 });
 
 // Setup CORS
