@@ -61,4 +61,52 @@ describe('SEO head: social preview image', () => {
     expect(host).toBe('jatimetri.belajarcarabelajar.com');
     expect(jpegSize(bytes(pathname.slice(1)))).toEqual([1200, 630]);
   });
+
+  it('declares the image size, type and alt text matching the file', () => {
+    expect(meta('property', 'og:image:width')).toBe('1200');
+    expect(meta('property', 'og:image:height')).toBe('630');
+    expect(meta('property', 'og:image:type')).toBe('image/jpeg');
+    expect(meta('property', 'og:image:alt')).toBeTruthy();
+  });
+});
+
+function meta(attr: 'property' | 'name', key: string): string | undefined {
+  return html.match(new RegExp(`<meta ${attr}="${key}" content="([^"]*)"`))?.[1];
+}
+
+describe('SEO head: Open Graph and Twitter tags', () => {
+  it('declares the site identity tags', () => {
+    const canonical = html.match(/<link rel="canonical" href="([^"]+)"/)?.[1];
+    expect(meta('property', 'og:url')).toBe('https://jatimetri.belajarcarabelajar.com/');
+    expect(meta('property', 'og:url')).toBe(canonical);
+    expect(meta('property', 'og:site_name')).toBe('Jatimetri');
+    expect(meta('property', 'og:locale')).toBe('id_ID');
+    expect(meta('property', 'og:type')).toBe('website');
+  });
+
+  it('keeps og:title in line with <title>', () => {
+    const title = html.match(/<title>([^<]+)<\/title>/)?.[1];
+    expect(title).toBeTruthy();
+    expect(meta('property', 'og:title')).toBe(title);
+  });
+
+  it('asks for a large Twitter card', () => {
+    expect(meta('name', 'twitter:card')).toBe('summary_large_image');
+  });
+
+  it('sets a theme-color', () => {
+    expect(html).toMatch(/<meta name="theme-color" content="#[0-9A-Fa-f]{6}"/);
+  });
+});
+
+describe('sitemap.xml', () => {
+  it('gives every URL a valid lastmod date', () => {
+    const urls = bytes('sitemap.xml').toString().match(/<url>[\s\S]*?<\/url>/g) ?? [];
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) {
+      const lastmod = u.match(/<lastmod>([^<]+)<\/lastmod>/)?.[1];
+      expect(lastmod).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(Number.isNaN(Date.parse(lastmod!))).toBe(false);
+    }
+  });
 });
