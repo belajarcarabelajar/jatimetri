@@ -78,10 +78,11 @@ CLERK_SECRET_KEY=sk_test_...
 You need to run both the frontend and the backend simultaneously for full local functionality.
 
 **Start the Backend (API)**
-Open a terminal in the root directory (where `wrangler.toml` lives) and start the local Cloudflare dev server:
+Open a terminal in the root directory (where `wrangler.toml` lives) and start the local Cloudflare dev server (wrangler is a root devDependency; the worker's own dependencies come from `worker/`, so install both first):
 ```bash
-bunx wrangler dev
+bun run worker:dev
 ```
+The API only answers CORS requests from `https://jatimetri.belajarcarabelajar.com`, `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). To allow more origins (e.g. a Pages preview URL), set `ALLOWED_ORIGINS` to a comma-separated list in `.dev.vars` locally or as a worker variable/secret in production.
 
 **Start the Frontend**
 Open a separate terminal in the root directory and start Vite:
@@ -116,7 +117,7 @@ To build and deploy to Cloudflare Pages (project `jatimetri`):
 Set `SKIP_BUILD=1` to deploy the existing `dist/`. CI does not deploy automatically.
 
 ### Backend (API)
-To deploy the Cloudflare worker to your production environment:
+To deploy the Cloudflare worker to your production environment (run from the root, after `wrangler login`):
 ```bash
-bunx wrangler deploy
+bun run worker:deploy
 ```

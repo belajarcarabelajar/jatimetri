@@ -31,6 +31,8 @@ type Bindings = {
   CLERK_PUBLISHABLE_KEY: string;
   CLERK_SECRET_KEY: string;
   VITE_CLERK_PUBLISHABLE_KEY?: string;
+  // Extra CORS origins beyond DEFAULT_ALLOWED_ORIGINS, comma-separated (e.g. a preview deploy URL).
+  ALLOWED_ORIGINS?: string;
   DB: D1Database;
   REPORTS_BUCKET: R2Bucket;
 };
@@ -70,9 +72,24 @@ app.onError((err, c) => {
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
-// Setup CORS
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://jatimetri.belajarcarabelajar.com',
+  'http://localhost:5173', // vite dev
+  'http://localhost:4173', // vite preview
+];
+
+function allowedOrigins(extra: string | undefined): string[] {
+  const fromEnv = (extra ?? '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  return [...DEFAULT_ALLOWED_ORIGINS, ...fromEnv];
+}
+
+// Setup CORS: echo the request Origin only when it is allowlisted; otherwise no
+// Access-Control-Allow-Origin header is sent and the browser blocks the response.
 app.use('/*', cors({
-  origin: '*',
+  origin: (origin, c) => (allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin) ? origin : null),
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['POST', 'GET', 'OPTIONS', 'PATCH', 'DELETE'],
 }));
@@ -98,22 +115,28 @@ app.use('/api/*', async (c, next) => {
     return c.json({ error: "Missing Authorization header" }, 401);
   }
 
+  let requestState: Awaited<ReturnType<typeof clerkClient.authenticateRequest>>;
   try {
-    const requestState = await clerkClient.authenticateRequest(c.req.raw, {
+    requestState = await clerkClient.authenticateRequest(c.req.raw, {
       secretKey: c.env.CLERK_SECRET_KEY,
       publishableKey: publishableKey,
     });
-    
-    if (!requestState.isSignedIn) {
-      return c.json({ error: "Unauthorized", details: requestState.reason, message: requestState.message }, 401);
-    }
-    
-    // Store userId in context
-    c.set('userId', requestState.toAuth().userId);
-    await next();
   } catch (error) {
-    return c.json({ error: "Auth Exception", details: thrownMessage(error) }, 401);
+    console.error('Clerk authenticateRequest threw:', thrownMessage(error));
+    return c.json({ error: "Unauthorized" }, 401);
   }
+
+  const userId = requestState.isSignedIn ? requestState.toAuth().userId : null;
+  if (!userId) {
+    // Clerk's reason/message describe token internals; keep them in the logs only.
+    console.warn('Clerk auth rejected:', requestState.reason, requestState.message);
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Store userId in context. next() runs outside the try so route errors reach
+  // app.onError (500) instead of being reported as auth failures.
+  c.set('userId', userId);
+  await next();
 });
 
 app.get('/', (c) => {
