@@ -3,7 +3,8 @@
 // This is a dependency-free copy of the contract in the bcb monorepo
 // (belajarcarabelajar/bcb: packages/data/src/akun/sso.ts, otp.ts normalEmail/samaWaktuKonstan,
 // sesi.ts base64url/bacaCookie, kembali.ts jalurKembaliAman). Keep it byte-compatible: the shared
-// fixture `sso-v1.fixture.json` (copied verbatim from bcb) is asserted in bcb-sso.test.ts.
+// fixture `sso-v1.fixture.json` (copied verbatim from bcb) is asserted in worker/test/worker.test.ts
+// ("bcb-sso contract").
 //
 // Token: `<b64u(email)>.<exp>.<nonce>.<b64u(HMAC-SHA256(secret, "bcb-sso|v1|" + aud + "|" + email + "|" + exp + "|" + nonce))>`
 // Burning the nonce (single use) is the caller's job.

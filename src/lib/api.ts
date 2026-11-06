@@ -1,9 +1,11 @@
 /**
  * Single place that knows where the API lives.
  *
- * By default the Worker is served on the same origin as the SPA, so every URL is
- * relative ("/api/..."). VITE_API_URL can point at another origin; requests always
- * send credentials so the HttpOnly session cookie travels either way.
+ * The Worker is routed on the same origin as the SPA (jatimetri.belajarcarabelajar.com/api/*
+ * and /masuk-bcb*), so every URL is relative ("/api/..."). The API must stay on that origin:
+ * the session cookie `__Host-jatimetri_sesi` is host-only and SameSite=Lax, so a fetch to
+ * another site never carries it, `credentials: "include"` or not. VITE_API_URL is only for a
+ * same-origin path prefix or for local development.
  * Auth is cookie-only: never attach an Authorization header or keep tokens in JS.
  */
 const API_BASE: string = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");

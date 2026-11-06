@@ -33,10 +33,13 @@ Configuration is required for both the frontend and the backend.
 
 ### Frontend (`.env.local`, optional)
 The frontend needs **no** environment variables. The API is called on the same origin as the SPA
-(relative `/api/...` URLs). Only if the API lives on another origin, set it in `.env.local` (see `.env.example`):
+(relative `/api/...` URLs), and it must stay there: the Worker is routed on `jatimetri.belajarcarabelajar.com`,
+and the session cookie `__Host-jatimetri_sesi` is host-only and SameSite=Lax, so a cross-site API never receives
+it, even though requests use `credentials: "include"`. `VITE_API_URL` is only for a same-origin path prefix or for
+local development (see `.env.example`):
 ```env
 # Default: same origin
-# VITE_API_URL=https://api.example.com
+# VITE_API_URL=
 ```
 
 ### Authentication (BCB Academy unified login)
@@ -91,7 +94,7 @@ Open a terminal in the root directory (where `wrangler.toml` lives) and start th
 ```bash
 bun run worker:dev
 ```
-The API only answers CORS requests from `https://jatimetri.belajarcarabelajar.com`, `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). To allow more origins (e.g. a Pages preview URL), set `ALLOWED_ORIGINS` to a comma-separated list in `.dev.vars` locally or as a worker variable/secret in production.
+The API only answers CORS requests from `https://jatimetri.belajarcarabelajar.com`, `http://localhost:5173` (Vite dev) and `http://localhost:4173` (Vite preview). To allow more origins (e.g. a Pages preview URL), set `ALLOWED_ORIGINS` to a comma-separated list in `.dev.vars` locally or as a worker variable/secret in production. CORS does not carry the session cookie: from another site the API only answers as signed out.
 
 **Start the Frontend**
 Open a separate terminal in the root directory and start Vite:

@@ -160,7 +160,8 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
     return c.json({ error: 'Internal Server Error' }, 500);
   });
 
-  // CORS only matters when the SPA is served from another origin (VITE_API_URL); same-origin requests ignore it.
+  // CORS only affects requests from another origin (ALLOWED_ORIGINS, e.g. local development). Those never
+  // carry the SameSite=Lax session cookie, so the SPA must call the API on its own origin; same-origin requests ignore CORS.
   app.use('/api/*', cors({
     origin: (origin, c) => (allowedOrigins(c.env.ALLOWED_ORIGINS).includes(origin) ? origin : null),
     allowHeaders: ['Content-Type'],

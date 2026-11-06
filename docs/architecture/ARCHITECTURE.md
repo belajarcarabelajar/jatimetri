@@ -1,4 +1,4 @@
-# Jatimetri — Architecture
+# Jatimetri: Architecture
 
 Jatimetri is a single-page web app for a self-reflection assessment. It has two
 deployables:
@@ -40,12 +40,14 @@ session cookie. The SPA never sees a token or key. (Clerk was used until 2026-11
 `src/main.tsx` wires `ThemeProvider` (next-themes, system theme), `I18nextProvider`
 and `SessionProvider` (`src/lib/auth`: `useSession()` reads `GET /api/me`; `signIn()` is a
 full-page navigation to `/masuk-bcb/mulai?next=…`; `signOut()` posts `/api/logout`).
-API calls go through `src/lib/api.ts` (same origin by default, `credentials: "include"`).
+API calls go through `src/lib/api.ts` (relative same-origin URLs, `credentials: "include"`).
+The API must stay on the site's origin: the session cookie is host-only and SameSite=Lax,
+so a cross-site API never receives it.
 No environment variables are required.
 
 ### Assessment flow
 
-- **Question bank:** `src/data/questions/v1-bank.ts` — one linear list of slides
+- **Question bank:** `src/data/questions/v1-bank.ts`, one linear list of slides
   (`Q-ID-*` identity questions, transitions, `tap-card`, `scale-1-5`, `ranking`,
   `yes-no`, `dropdown`, `text`). Prompts can vary by stage (`prompts.child/teen/adult`)
   and `Q-ID-03` options depend on the stage chosen in `Q-ID-02`.
@@ -118,7 +120,7 @@ PDF are Indonesian.
 
 ### Data model (D1, `worker/src/db/schema.ts`, migrations in `worker/drizzle/`)
 
-- `users(id TEXT PK — normalised BCB email, email, created_at)`
+- `users(id TEXT PK, email, created_at)`; `id` is the normalised BCB email
 - `assessments(id TEXT PK, user_id → users.id, stage, dominance_pattern,
   radar_data JSON, tendencies JSON, created_at)`
 - `sessions(id_hash PK, email, created_at, expires_at)`, `sso_nonce(nonce PK, expires_at)`
@@ -127,11 +129,37 @@ PDF are Indonesian.
 Raw answers are sent by the client but **not** stored. Rows created under Clerk user ids
 before 2026-11-06 are left in place but no longer reachable.
 
+### Follow-up: purge of Clerk-era data (planned, nothing deleted yet)
+
+The old Worker stored only `users (id)` with the Clerk user id, so no Clerk id maps to an
+email. Nobody can reach that data after the switch, and `DELETE /api/account` only removes
+data under the signed-in email (rows where the id is the email, R2 objects under `<email>/`).
+What stays:
+
+- D1 `users`: rows whose `id` is a Clerk user id (`email` is NULL).
+- D1 `assessments`: rows whose `user_id` is a Clerk user id.
+- R2 `jatimetri-reports`: PDFs at `<clerkId>/<assessmentId>.pdf`.
+
+A normalised BCB email always contains exactly one `@` (`normalEmail` in
+`worker/src/auth/bcb-sso.ts`) and a Clerk user id contains none, so `@` separates the two.
+Count the leftovers read-only, with SELECT only:
+
+```bash
+bunx wrangler d1 execute inner_potential_db --remote --command "SELECT (SELECT COUNT(*) FROM users WHERE id NOT LIKE '%@%') AS clerk_users, (SELECT COUNT(*) FROM assessments WHERE user_id NOT LIKE '%@%') AS clerk_assessments"
+```
+
+For R2, list the top-level prefixes of `jatimetri-reports` (S3-compatible `ListObjectsV2`
+with `delimiter=/`, using a read-only R2 API token, or the bucket view in the Cloudflare
+dashboard) and count the objects under every prefix without `@`.
+
+The purge runs only after the owner confirms these counts, as a separate change. Until
+then nothing is deleted.
+
 ## Configuration
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `VITE_API_URL` | `.env.local` / Pages build env (optional) | API base URL; default same origin |
+| `VITE_API_URL` | `.env.local` / Pages build env (optional) | API base URL; default same origin. Only for a same-origin path prefix or local development (the session cookie never reaches another site) |
 | `BCB_SSO_RAHASIA` | `.dev.vars` / `wrangler secret put` | Hand-off secret, same value as `SSO_RAHASIA_JATIMETRI` on the BCB apex |
 | `ALLOWED_ORIGINS` | Worker vars (optional) | Extra CORS origins |
 | `DB`, `REPORTS_BUCKET` | `wrangler.toml` bindings | D1 database, R2 bucket |
