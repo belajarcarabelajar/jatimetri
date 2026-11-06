@@ -1,0 +1,15 @@
+# Cloudflare Pages response headers. https://developers.cloudflare.com/pages/configuration/headers/
+# The CSP is Report-Only: violations show up in the browser console, nothing is blocked.
+# Once it runs clean, rename the header to Content-Security-Policy to enforce it.
+# complete-kite-90.clerk.accounts.dev is the Clerk Frontend API host encoded in CLERK_PUBLISHABLE_KEY (wrangler.toml).
+
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://complete-kite-90.clerk.accounts.dev https://*.clerk.accounts.dev https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://img.clerk.com; font-src 'self' data:; connect-src 'self' data: blob: https://jatimetri.belajarcarabelajar.com https://*.workers.dev https://complete-kite-90.clerk.accounts.dev https://*.clerk.accounts.dev https://clerk-telemetry.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
