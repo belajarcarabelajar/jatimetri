@@ -32,18 +32,17 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/assets/**',
         'src/index.css',
-        'src/App.css',
       ],
 
       // Minimum coverage thresholds – CI fails if coverage REGRESSES below these.
-      // Current measured baselines (2026-06-11):
-      //   Statements: 20.91%  Branches: 13.94%  Functions: 20.83%  Lines: 19.49%
-      // Escalation schedule: +10 pts per sprint as component tests are added.
+      // Measured baseline (2026-11-06):
+      //   Statements: 69.85%  Branches: 53.84%  Functions: 70.79%  Lines: 71.94%
+      // Thresholds sit a few points below so real regressions fail CI.
       thresholds: {
-        lines: 19,
-        branches: 13,
-        functions: 20,
-        statements: 20,
+        lines: 65,
+        branches: 50,
+        functions: 65,
+        statements: 65,
       },
     },
   },

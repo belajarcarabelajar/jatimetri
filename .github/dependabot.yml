@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Frontend (Vite SPA) and wrangler, locked by /bun.lock
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      frontend-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # Cloudflare Worker API, locked by /worker/bun.lock
+  - package-ecosystem: "bun"
+    directory: "/worker"
+    schedule:
+      interval: "weekly"
+    groups:
+      worker-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]

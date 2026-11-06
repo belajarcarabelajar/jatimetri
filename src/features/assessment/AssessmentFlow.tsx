@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAssessmentStore } from "@/store/useAssessmentStore";
 import { v1Bank } from "@/data/questions/v1-bank";
@@ -8,16 +8,43 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
 export function AssessmentFlow() {
-  const { currentSlideIndex, setSlideIndex, answers, setAnswer, setUserName, setStage, resetAssessment } = useAssessmentStore();
+  const { currentSlideIndex, setSlideIndex, answers, setAnswer, clearAnswer, setUserName, setStage, resetAssessment } = useAssessmentStore();
   const navigate = useNavigate();
 
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const questions = v1Bank;
-  const progress = ((currentSlideIndex + 1) / questions.length) * 100;
+  // A persisted index can be out of range after the question bank changes
+  const slideIndex = Math.min(Math.max(currentSlideIndex, 0), questions.length - 1);
+  const progress = ((slideIndex + 1) / questions.length) * 100;
 
-  const currentQuestion = questions[currentSlideIndex];
+  const currentQuestion = questions[slideIndex];
+  const progressLabel = `Pertanyaan ${slideIndex + 1} dari ${questions.length}`;
+
+  const desktopHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mobileHeadingRef = useRef<HTMLHeadingElement>(null);
+  const lastSlideRef = useRef(slideIndex);
+
+  // After a slide change (not on first mount), land keyboard/screen-reader users on the new question
+  useEffect(() => {
+    if (lastSlideRef.current === slideIndex) return;
+    lastSlideRef.current = slideIndex;
+    const isDesktop =
+      typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 768px)").matches;
+    const heading = isDesktop ? desktopHeadingRef.current : mobileHeadingRef.current;
+    if (!heading) return;
+    // Leave focus alone if the new question already focused its own field (e.g. autoFocus on the name input)
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active.matches("input, textarea, select") &&
+      heading.closest("[data-slide]")?.contains(active)
+    ) {
+      return;
+    }
+    heading.focus({ preventScroll: true });
+  }, [slideIndex]);
 
   // Determine stage from Q-ID-02
   const stageRaw = answers["Q-ID-02"] as string;
@@ -40,14 +67,14 @@ export function AssessmentFlow() {
   }
 
   const handleNext = () => {
-    if (currentSlideIndex < questions.length - 1) {
-      setSlideIndex(currentSlideIndex + 1);
+    if (slideIndex < questions.length - 1) {
+      setSlideIndex(slideIndex + 1);
     }
   };
 
   const handlePrev = () => {
-    if (currentSlideIndex > 0) {
-      setSlideIndex(currentSlideIndex - 1);
+    if (slideIndex > 0) {
+      setSlideIndex(slideIndex - 1);
     }
   };
 
@@ -61,6 +88,10 @@ export function AssessmentFlow() {
 
     // Persist stage to store when Q-ID-02 is answered
     if (currentQuestion.id === "Q-ID-02" && typeof val === "string") {
+      // Stage detail options depend on the stage, so a previous detail answer is no longer valid
+      if (answers["Q-ID-02"] !== undefined && answers["Q-ID-02"] !== val) {
+        clearAnswer("Q-ID-03");
+      }
       if (val === "Anak") setStage("child");
       else if (val === "Remaja") setStage("teenager");
       else if (val === "Dewasa") setStage("adult");
@@ -103,7 +134,7 @@ export function AssessmentFlow() {
     const isDownSwipe = distance < -minSwipeDistance;
 
     if (isUpSwipe) {
-      if (isAnswered() && currentSlideIndex < questions.length - 1) {
+      if (isAnswered() && slideIndex < questions.length - 1) {
         handleNext();
       }
     }
@@ -120,6 +151,15 @@ export function AssessmentFlow() {
         <div className="flex items-center justify-between mb-3 max-w-5xl mx-auto">
           <span className="text-sm font-medium text-muted-foreground">Progress: {Math.round(progress)}%</span>
           <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrev}
+              disabled={slideIndex === 0}
+              className="md:hidden text-muted-foreground hover:text-primary"
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Kembali
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-muted-foreground hover:text-primary">
               Keluar
             </Button>
@@ -129,14 +169,20 @@ export function AssessmentFlow() {
           </div>
         </div>
         <div className="max-w-5xl mx-auto">
-          <Progress value={progress} className="h-2 bg-primary-soft" />
+          <Progress
+            value={progress}
+            aria-label={progressLabel}
+            getValueLabel={() => progressLabel}
+            className="h-2 bg-primary-soft"
+          />
         </div>
       </div>
 
       {/* Desktop View */}
       <div className="hidden md:flex flex-1 items-center justify-center p-6 relative w-full max-w-5xl mx-auto">
-        <div className="w-full">
+        <div className="w-full" data-slide>
           <QuestionCard 
+            headingRef={desktopHeadingRef}
             question={dynamicQuestion} 
             currentAnswer={answers[currentQuestion.id]} 
             onAnswer={handleAnswer} 
@@ -146,10 +192,10 @@ export function AssessmentFlow() {
         
         {/* Desktop Controls */}
         <div className="absolute bottom-10 left-6 right-6 flex justify-between">
-          <Button variant="outline" onClick={handlePrev} disabled={currentSlideIndex === 0} className="shadow-sm">
+          <Button variant="outline" onClick={handlePrev} disabled={slideIndex === 0} className="shadow-sm">
             <ArrowLeft className="mr-2 h-4 w-4" /> Sebelumnya
           </Button>
-          {currentSlideIndex === questions.length - 1 && isAnswered() ? (
+          {slideIndex === questions.length - 1 && isAnswered() ? (
              <Button onClick={handleFinish} className="shadow-sm bg-success hover:bg-success/90">
                Selesai <ArrowRight className="ml-2 h-4 w-4" />
              </Button>
@@ -177,7 +223,7 @@ export function AssessmentFlow() {
       >
         <div 
           className="flex flex-col h-full w-full transition-transform duration-500 ease-out"
-          style={{ transform: `translateY(-${currentSlideIndex * 100}%)` }}
+          style={{ transform: `translateY(-${slideIndex * 100}%)` }}
         >
           {questions.map((q, index) => {
             const mDynamicQ = { ...q };
@@ -187,13 +233,18 @@ export function AssessmentFlow() {
               if (activeStage === "teen") mDynamicQ.options = q.teenOptions;
               if (activeStage === "adult") mDynamicQ.options = q.adultOptions;
             }
+            const isCurrent = index === slideIndex;
             return (
               <div 
                 key={q.id} 
+                data-slide
+                inert={!isCurrent}
+                aria-hidden={isCurrent ? undefined : true}
                 className="h-full w-full flex-shrink-0 flex items-center justify-center p-4 overflow-y-auto"
               >
                 <div className="w-full my-auto py-8">
                   <QuestionCard 
+                    headingRef={isCurrent ? mobileHeadingRef : undefined}
                     question={mDynamicQ} 
                     currentAnswer={answers[q.id]} 
                     onAnswer={(val) => {

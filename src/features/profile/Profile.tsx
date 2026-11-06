@@ -1,11 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { useAuth, useUser } from "@clerk/clerk-react";
+import { useSession } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Loader2, AlertCircle, Settings, Trash2, Eye } from "lucide-react";
+import { Loader2, AlertCircle, Settings, Trash2, Eye, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAssessmentStore } from "@/store/useAssessmentStore";
 import type { DashboardResult, Tendency } from "@/data/scoring/scoring-matrix";
+
+const DELETE_CONFIRM_WORD = "HAPUS";
+const BCB_ACCOUNT_URL = "https://belajarcarabelajar.com/account";
 
 type Report = {
   id: string;
@@ -16,10 +22,21 @@ type Report = {
   tendencies: string | Tendency[];
 };
 
+// A malformed row from the API must not crash the whole history list
+function parseJsonField<T>(value: string | T[] | null | undefined): T[] {
+  if (typeof value !== 'string') return value ?? [];
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function Profile() {
   const { i18n } = useTranslation();
-  const { isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
+  const { email, refresh } = useSession();
+  const resetAssessment = useAssessmentStore((s) => s.resetAssessment);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,23 +52,25 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingAccountDelete, setConfirmingAccountDelete] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const token = await getToken();
-        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-        const res = await fetch(`${API_URL}/api/reports`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        
+        const res = await apiFetch("/api/reports");
+
+        if (res.status === 401) {
+          // Session expired: re-check it so the route guard sends the user to the login
+          void refresh();
+          return;
+        }
         if (!res.ok) {
           const errData = await res.text();
           throw new Error(`Server Error: ${res.status} - ${errData}`);
         }
-        
+
         const data = await res.json();
         setReports(data.reports || []);
       } catch (err) {
@@ -63,18 +82,13 @@ export default function Profile() {
     };
 
     fetchReports();
-  }, [isSignedIn, getToken]);
+  }, [refresh]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Hapus riwayat assessment ini? Tindakan tidak bisa dibatalkan.")) return;
     setDeletingId(id);
     try {
-      const token = await getToken();
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-      const res = await fetch(`${API_URL}/api/assessments/${id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
-      });
+      const res = await apiFetch(`/api/assessments/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (res.ok) {
         setReports(prev => prev.filter(r => r.id !== id));
       } else {
@@ -84,6 +98,29 @@ export default function Profile() {
       alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD) return;
+    setDeletingAccount(true);
+    try {
+      // Deletes only the Jatimetri data (history, PDFs, session); the BCB account itself stays
+      const res = await apiFetch("/api/account", { method: "DELETE" });
+      if (!res.ok) {
+        alert("Gagal menghapus data Jatimetri. Silakan coba lagi atau hubungi kami.");
+        return;
+      }
+      resetAssessment();
+      try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
+      // The Worker cleared the session cookie. Leave /profile first, then re-read the session:
+      // the other order makes RequireSession start a new login (the BCB apex would sign the user straight back in).
+      navigate('/');
+      await refresh();
+    } catch (e) {
+      alert(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -105,19 +142,76 @@ export default function Profile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-4 border p-4 rounded-lg">
-              <img src={user?.imageUrl} alt={`Foto profil pengguna ${user?.firstName || ''}`} loading="lazy" className="w-12 h-12 rounded-full aspect-square" />
-              <div>
-                <p className="font-semibold">{user?.fullName || "Pengguna"}</p>
-                <p className="text-sm text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
+              <div
+                aria-hidden="true"
+                className="w-12 h-12 shrink-0 rounded-full bg-primary/15 text-primary text-lg font-semibold flex items-center justify-center"
+              >
+                {(email?.charAt(0) || "?").toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-muted-foreground">Masuk dengan akun BCB Academy</p>
+                <p className="font-semibold truncate">{email}</p>
               </div>
             </div>
-            
-            <div className="flex justify-between items-center p-4 border rounded-lg border-destructive/20 bg-destructive/5">
-              <div>
-                <h3 className="font-semibold text-destructive">Hapus Akun & Data</h3>
-                <p className="text-sm text-muted-foreground">Semua data riwayat akan dihapus permanen.</p>
+
+            <div className="p-4 border rounded-lg border-destructive/20 bg-destructive/5 space-y-4">
+              <div className="flex justify-between items-center gap-4">
+                <div>
+                  <h3 className="font-semibold text-destructive">Hapus Data Jatimetri</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Semua riwayat assessment dan PDF laporan Jatimetri Anda akan dihapus permanen, lalu Anda akan keluar.
+                    Akun BCB Academy Anda tidak ikut terhapus; akun itu dikelola di{" "}
+                    <a
+                      href={BCB_ACCOUNT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 font-medium text-primary underline underline-offset-2"
+                    >
+                      belajarcarabelajar.com/account
+                      <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                    </a>
+                    .
+                  </p>
+                </div>
+                {!confirmingAccountDelete && (
+                  <Button variant="destructive" size="sm" onClick={() => setConfirmingAccountDelete(true)}>
+                    <Trash2 className="w-4 h-4 mr-2"/> Hapus
+                  </Button>
+                )}
               </div>
-              <Button variant="destructive" size="sm"><Trash2 className="w-4 h-4 mr-2"/> Hapus</Button>
+              {confirmingAccountDelete && (
+                <div className="space-y-3">
+                  <label htmlFor="delete-data-confirm" className="text-sm font-medium block">
+                    Ketik <strong>{DELETE_CONFIRM_WORD}</strong> untuk konfirmasi. Tindakan ini tidak bisa dibatalkan.
+                  </label>
+                  <Input
+                    id="delete-data-confirm"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    autoComplete="off"
+                    disabled={deletingAccount}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteAccount}
+                      disabled={deletingAccount || confirmText.trim().toUpperCase() !== DELETE_CONFIRM_WORD}
+                    >
+                      {deletingAccount ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2"/>}
+                      Hapus Data Permanen
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setConfirmingAccountDelete(false); setConfirmText(""); }}
+                      disabled={deletingAccount}
+                    >
+                      Batal
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -136,8 +230,8 @@ export default function Profile() {
             ) : (
               <div className="space-y-4">
                 {reports.map((report) => {
-                  const radarData = typeof report.radar_data === 'string' ? JSON.parse(report.radar_data || '[]') : (report.radar_data || []);
-                  const tendencies = typeof report.tendencies === 'string' ? JSON.parse(report.tendencies || '[]') : (report.tendencies || []);
+                  const radarData = parseJsonField(report.radar_data);
+                  const tendencies = parseJsonField(report.tendencies);
                   const dateLabel = report.created_at
                     ? new Date(Number(report.created_at) * 1000).toLocaleDateString(i18n.language, { year: 'numeric', month: 'long', day: 'numeric' })
                     : '-';

@@ -10,12 +10,12 @@
  *   `spies` regardless of which instance generatePDF created.
  *
  * Coverage targets:
- *   ✓ Returns undefined when elementId does not exist in DOM
+ *   ✓ Throws a descriptive Error when elementId does not exist in DOM
  *   ✓ Returns undefined when element has no .pdf-page children
  *   ✓ Calls html2canvas once per .pdf-page child
  *   ✓ Calls pdf.addPage() only for pages after the first
  *   ✓ Calls pdf.save() with the provided filename
- *   ✓ Restores element.style.display to original value after completion
+ *   ✓ Restores element.style.display to original value after completion (and on failure)
  *   ✓ Returns a Blob on successful completion
  *   ✓ Calls pdf.output("blob")
  */
@@ -111,12 +111,14 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('generatePDF – missing element', () => {
-  it('returns undefined when elementId is not found in the DOM', async () => {
-    expect(await generatePDF('non-existent-id', 'output.pdf')).toBeUndefined();
+  it('throws a descriptive Error when elementId is not found in the DOM', async () => {
+    await expect(generatePDF('non-existent-id', 'output.pdf')).rejects.toThrow(
+      /PDF container element "#non-existent-id" was not found/,
+    );
   });
 
   it('never calls html2canvas when element is missing', async () => {
-    await generatePDF('ghost-element', 'output.pdf');
+    await expect(generatePDF('ghost-element', 'output.pdf')).rejects.toThrow();
     expect(mockHtml2canvas).not.toHaveBeenCalled();
   });
 });
@@ -212,5 +214,15 @@ describe('generatePDF – style restoration', () => {
     await generatePDF('style-block', 'out.pdf');
 
     expect(observedDisplays[0]).toBe('block');
+  });
+
+  it('restores element.style.display even when html2canvas throws', async () => {
+    mockHtml2canvas.mockRejectedValueOnce(new Error('capture failed'));
+    const container = createPageContainer('style-restore-error', 2);
+    container.style.display = 'none';
+
+    await expect(generatePDF('style-restore-error', 'out.pdf')).rejects.toThrow('capture failed');
+    expect(container.style.display).toBe('none');
+    expect(spies.save).not.toHaveBeenCalled();
   });
 });

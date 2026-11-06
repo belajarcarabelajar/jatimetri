@@ -335,3 +335,22 @@ describe('evaluateAnswers – tendency id format', () => {
     expect(tendency.id).toBe(tendency.label.toLowerCase().replace(/ /g, '-'));
   });
 });
+
+describe('evaluateAnswers – maintenance regressions', () => {
+  it('scores the "Pengatur tugas" option (Q-26) for Structured Executor', () => {
+    const result = evaluateAnswers({ 'Q-26': 'Pengatur tugas', 'Q-x': 'Teliti' }, 'adult');
+    const structured = result.tendencies.find(t => t.label === 'Structured Executor');
+    expect(structured?.evidenceCount).toBe(2);
+  });
+
+  it('ignores identity answers (Q-ID-*) even when they equal a keyword', () => {
+    const result = evaluateAnswers({ 'Q-ID-01': 'Kreatif', 'Q-ID-03': 'Kreatif' }, 'adult');
+    expect(result.dominancePattern).toBe('Balanced Individual');
+  });
+
+  it('keeps a fixed radar axis order regardless of scores', () => {
+    const a = evaluateAnswers({ 'Q-a': 'Kreatif' }, 'adult').radarData.map(r => r.subject);
+    const b = evaluateAnswers({ 'Q-a': 'Peduli' }, 'adult').radarData.map(r => r.subject);
+    expect(a).toEqual(b);
+  });
+});

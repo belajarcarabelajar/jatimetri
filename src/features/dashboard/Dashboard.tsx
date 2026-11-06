@@ -6,11 +6,11 @@ import { RadarChartPlot } from "./components/RadarChartPlot";
 import { SpectrumSlider } from "./components/SpectrumSlider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download, Save } from "lucide-react";
-import { useAuth, SignInButton } from "@clerk/clerk-react";
+import { Loader2, Download, Save, ClipboardList, ArrowRight } from "lucide-react";
+import { useSession } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
 import { useTranslation } from "react-i18next";
 import { ReportPDF } from "../pdf/ReportPDF";
-import { generatePDF } from "../pdf/generatePDF";
 
 type HistoricalReport = {
   dominancePattern: string;
@@ -25,7 +25,8 @@ export default function Dashboard() {
   const { answers, stage, userName } = useAssessmentStore();
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const { isSignedIn, getToken } = useAuth();
+  const { status: sessionStatus, signIn } = useSession();
+  const isSignedIn = sessionStatus === "signedIn";
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -40,16 +41,26 @@ export default function Dashboard() {
 
   // Check if we're viewing a historical report from profile page
   const [historicalReport] = useState<HistoricalReport | null>(() => {
-    const stored = sessionStorage.getItem('view-historical-report');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = sessionStorage.getItem('view-historical-report');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
 
   useEffect(() => {
-    sessionStorage.removeItem('view-historical-report');
+    try { sessionStorage.removeItem('view-historical-report'); } catch { /* storage unavailable */ }
     // The old `historicalReport ? 0 : 2000` read the initial null state, so the delay was always 2000 ms.
     const timer = setTimeout(() => setLoading(false), 2000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Identity answers (Q-ID-*) carry no scoring evidence. Without any scored answer the
+  // scoring matrix would still produce a default pattern, which must not be shown as a result.
+  const answerKeys = Object.keys(answers);
+  const hasScoredAnswers = answerKeys.some((key) => !key.startsWith("Q-ID-"));
+  const isEmpty = !historicalReport && !hasScoredAnswers;
 
   const liveResult = evaluateAnswers(answers, stage);
   const result = historicalReport ? {
@@ -68,17 +79,11 @@ export default function Dashboard() {
   })();
   const effectiveStage = historicalReport ? historicalReport.stage : (stage || stageFromAnswer || "adult");
 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
-
   const handleSave = async () => {
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_URL}/api/save-attempt`, {
+      const res = await apiFetch("/api/save-attempt", {
          method: "POST",
-         headers: {
-           "Content-Type": "application/json",
-           "Authorization": `Bearer ${token}`
-         },
+         headers: { "Content-Type": "application/json" },
          body: JSON.stringify({
             stage: effectiveStage,
             answers,
@@ -89,6 +94,9 @@ export default function Dashboard() {
       });
       if (res.ok) {
          navigate('/profile');
+      } else if (res.status === 401) {
+         // Session expired: log in again and come back; the answers stay in localStorage
+         signIn('/dashboard');
       } else {
          const errData = await res.text();
          alert(`${t('fail_save')} Server Error: ${res.status} - ${errData}`);
@@ -102,18 +110,17 @@ export default function Dashboard() {
   const handleDownloadPDF = async () => {
     setGeneratingPdf(true);
     try {
+      // html2canvas + jspdf are heavy; load them only when a download is requested
+      const { generatePDF } = await import("../pdf/generatePDF");
       const safeUserName = userName || "Pengguna";
       const pdfBlob = await generatePDF("pdf-container", `Inner_Potential_Assessment_${safeUserName}_${new Date().toISOString().split('T')[0]}.pdf`);
       
-      if (isSignedIn && pdfBlob) {
-        const token = await getToken();
+      // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
+      if (isSignedIn && pdfBlob && !historicalReport) {
         // 1. Save Result first to get assessmentId
-        const resSave = await fetch(`${API_URL}/api/save-attempt`, {
+        const resSave = await apiFetch("/api/save-attempt", {
            method: "POST",
-           headers: {
-             "Content-Type": "application/json",
-             "Authorization": `Bearer ${token}`
-           },
+           headers: { "Content-Type": "application/json" },
            body: JSON.stringify({
               stage: effectiveStage,
               answers,
@@ -131,13 +138,15 @@ export default function Dashboard() {
            formData.append("file", pdfBlob, "report.pdf");
            formData.append("assessmentId", assessmentId);
 
-           await fetch(`${API_URL}/api/upload-pdf`, {
+           const resUpload = await apiFetch("/api/upload-pdf", {
              method: "POST",
-             headers: {
-               "Authorization": `Bearer ${token}`
-             },
              body: formData
            });
+           if (!resUpload.ok) {
+             console.error(`PDF upload failed: ${resUpload.status}`);
+           }
+        } else {
+           console.error(`Saving attempt failed: ${resSave.status}`);
         }
       }
     } catch (e) {
@@ -147,6 +156,29 @@ export default function Dashboard() {
       setGeneratingPdf(false);
     }
   };
+
+  if (isEmpty) {
+    const hasStarted = answerKeys.length > 0;
+    return (
+      <div className="flex-1 flex items-center justify-center bg-surface p-4 md:p-8">
+        <Card className="max-w-lg w-full shadow-md border-border/60 text-center">
+          <CardHeader>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <ClipboardList className="h-7 w-7 text-primary" aria-hidden="true" />
+            </div>
+            <CardTitle className="text-2xl">{t('no_result_title')}</CardTitle>
+            <CardDescription className="text-base leading-relaxed">{t('no_result_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button size="lg" onClick={() => navigate('/assessment')}>
+              {t(hasStarted ? 'continue_assessment' : 'start_assessment')}
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -173,18 +205,16 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-             {!historicalReport && (
-               isSignedIn ? (
-                 <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave}>
-                   <Save className="w-4 h-4 mr-2" /> {t('save_report')}
-                 </Button>
-               ) : (
-                 <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
-                   <Button variant="outline" className="flex-1 md:flex-none text-primary border-primary hover:bg-primary-soft">
-                     <Save className="w-4 h-4 mr-2" /> {t('login_save')}
-                   </Button>
-                 </SignInButton>
-               )
+             {!historicalReport && isSignedIn && (
+               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave}>
+                 <Save className="w-4 h-4 mr-2" /> {t('save_report')}
+               </Button>
+             )}
+             {!historicalReport && sessionStatus === "signedOut" && (
+               // Full-page login; the answers persist in localStorage so the user can save on return
+               <Button variant="outline" className="flex-1 md:flex-none text-primary border-primary hover:bg-primary-soft" onClick={() => signIn('/dashboard')}>
+                 <Save className="w-4 h-4 mr-2" /> {t('login_save')}
+               </Button>
              )}
              <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf}>
                {generatingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} 

@@ -1,0 +1,16 @@
+# Cloudflare Pages response headers. https://developers.cloudflare.com/pages/configuration/headers/
+# The CSP is Report-Only: violations show up in the browser console, nothing is blocked.
+# Once it runs clean, rename the header to Content-Security-Policy to enforce it.
+# The API and the BCB login receiver (/masuk-bcb/*) are served on this same origin, so
+# connect-src is 'self' (plus data:/blob: for the PDF export); login is a full-page navigation, not a script or frame.
+
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

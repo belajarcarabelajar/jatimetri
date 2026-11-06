@@ -1,0 +1,10 @@
+{
+  "_catatan": "Kontrak token SSO v1 (plan 2026-11-03-login-terpadu T1). Token dihitung independen dengan Python hmac; penerbit apex dan setiap penerima (Flash Course, Blender, repo fasttrack) wajib menghasilkan atau menerima token ini persis.",
+  "rahasia": "uji-rahasia-sso-v1-flash-course-0123456789",
+  "aud": "flash-course",
+  "email": "pembeli@contoh.id",
+  "sekarangDetik": 1893455880,
+  "exp": 1893456000,
+  "nonce": "AAAAAAAAAAAAAAAAAAAAAA",
+  "token": "cGVtYmVsaUBjb250b2guaWQ.1893456000.AAAAAAAAAAAAAAAAAAAAAA.OLtFQNIPdbAd7CPuLOKxknfnEovj5BYYYejILXWyBEA"
+}

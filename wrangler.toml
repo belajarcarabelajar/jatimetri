@@ -3,11 +3,19 @@ main = "worker/src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 
-[vars]
-CLERK_PUBLISHABLE_KEY = "pk_test_Y29tcGxldGUta2l0ZS05MC5jbGVyay5hY2NvdW50cy5kZXYk"
+# The API and the BCB login receiver run on the SAME host as the SPA (Cloudflare Pages), so the
+# session cookie is first-party (`__Host-jatimetri_sesi`). Worker routes win over Pages for these paths.
+routes = [
+  { pattern = "jatimetri.belajarcarabelajar.com/api/*", zone_name = "belajarcarabelajar.com" },
+  { pattern = "jatimetri.belajarcarabelajar.com/masuk-bcb*", zone_name = "belajarcarabelajar.com" },
+]
+
+# Secrets (values never in the repo):
+#   BCB_SSO_RAHASIA  same value as SSO_RAHASIA_JATIMETRI on the BCB apex Worker (>= 32 chars, e.g. `openssl rand -hex 32`):
+#                    bunx wrangler secret put BCB_SSO_RAHASIA
+# Optional var: ALLOWED_ORIGINS (comma-separated extra browser origins, e.g. a Pages preview URL).
 
 [env.production]
-vars = { CLERK_PUBLISHABLE_KEY = "pk_test_Y29tcGxldGUta2l0ZS05MC5jbGVyay5hY2NvdW50cy5kZXYk" }
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "inner_potential_db"

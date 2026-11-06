@@ -1,11 +1,28 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router";
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
-import Assessment from "./features/assessment/Assessment";
-import Dashboard from "./features/dashboard/Dashboard";
-import Profile from "./features/profile/Profile";
+import { Loader2 } from "lucide-react";
 import { MainLayout } from "./components/layout/MainLayout";
 import NotFound from "./components/NotFound";
+import { RequireSession } from "./lib/auth";
+
+// Route components are code-split so the landing page does not pay for
+// recharts, the assessment flow or the PDF pipeline up front.
+const Assessment = lazy(() => import("./features/assessment/Assessment"));
+const Dashboard = lazy(() => import("./features/dashboard/Dashboard"));
+const Profile = lazy(() => import("./features/profile/Profile"));
+
+function RouteFallback() {
+  return (
+    <div role="status" aria-label="Loading" className="flex-1 min-h-[50vh] flex items-center justify-center bg-background">
+      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+    </div>
+  );
+}
+
+// Suspense per route keeps MainLayout (header/footer) mounted while a page chunk loads.
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
+}
 
 function Home() {
   useEffect(() => {
@@ -47,14 +64,9 @@ function Home() {
 
 function ProtectedProfile() {
   return (
-    <>
-      <SignedIn>
-        <Profile />
-      </SignedIn>
-      <SignedOut>
-        <RedirectToSignIn />
-      </SignedOut>
-    </>
+    <RequireSession next="/profile">
+      <Lazy><Profile /></Lazy>
+    </RequireSession>
   );
 }
 
@@ -64,12 +76,12 @@ export default function App() {
       <Routes>
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Lazy><Dashboard /></Lazy>} />
           <Route path="/profile" element={<ProtectedProfile />} />
           <Route path="*" element={<NotFound />} />
         </Route>
         {/* Assessment is outside MainLayout for immersive full-screen experience */}
-        <Route path="/assessment" element={<Assessment />} />
+        <Route path="/assessment" element={<Lazy><Assessment /></Lazy>} />
       </Routes>
     </BrowserRouter>
   );

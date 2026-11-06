@@ -297,3 +297,12 @@ describe('useAssessmentStore – full assessment lifecycle', () => {
     expect(getState().isCompleted).toBe(false);
   });
 });
+
+describe('clearAnswer', () => {
+  it('removes only the given answer', () => {
+    getState().setAnswer('Q-ID-02', 'Anak');
+    getState().setAnswer('Q-ID-03', 'Kelas 1–3 SD');
+    getState().clearAnswer('Q-ID-03');
+    expect(getState().answers).toEqual({ 'Q-ID-02': 'Anak' });
+  });
+});

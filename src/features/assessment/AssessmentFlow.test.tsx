@@ -1,9 +1,10 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AssessmentFlow } from './AssessmentFlow';
 import type { QuestionCard as RealQuestionCard } from './components/QuestionCard';
 import { useAssessmentStore } from '@/store/useAssessmentStore';
+import { v1Bank } from '@/data/questions/v1-bank';
 
 type StoreState = ReturnType<typeof useAssessmentStore.getState>;
 type MockStoreState = Pick<
@@ -21,9 +22,10 @@ vi.mock('@/store/useAssessmentStore', () => ({
 
 // Mock QuestionCard so we don't need to test its internals here
 vi.mock('./components/QuestionCard', () => ({
-  QuestionCard: ({ question, onNext, onAnswer }: React.ComponentProps<typeof RealQuestionCard>) => (
+  QuestionCard: ({ question, onNext, onAnswer, headingRef }: React.ComponentProps<typeof RealQuestionCard>) => (
     <div data-testid="question-card">
-      <p>{question.prompt}</p>
+      <h3 ref={headingRef} tabIndex={-1}>{question.prompt}</h3>
+      {question.inputType === 'text' && <input aria-label="Nama kamu" autoFocus />}
       <button onClick={() => onAnswer('mock-answer')}>Answer Mock</button>
       <button onClick={onNext}>Next Mock</button>
     </div>
@@ -83,6 +85,96 @@ describe('AssessmentFlow', () => {
     // Assuming Q-ID-01 is the first question in v1Bank
     expect(storeState.setAnswer).toHaveBeenCalled();
   });
-});
 
-import { fireEvent } from '@testing-library/react';
+  describe('accessibility', () => {
+    const originalMatchMedia = window.matchMedia;
+
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia;
+    });
+
+    const mockViewport = (desktop: boolean) => {
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: desktop,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })) as unknown as typeof window.matchMedia;
+    };
+
+    const mobileSlides = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll<HTMLElement>('.md\\:hidden [data-slide]'));
+
+    it('makes only the current mobile slide focusable and visible to assistive tech', () => {
+      storeState.currentSlideIndex = 2;
+      const { container } = render(<AssessmentFlow />);
+      const slides = mobileSlides(container);
+      expect(slides).toHaveLength(v1Bank.length);
+      slides.forEach((slide, index) => {
+        if (index === 2) {
+          expect(slide).not.toHaveAttribute('inert');
+          expect(slide).not.toHaveAttribute('aria-hidden');
+        } else {
+          expect(slide).toHaveAttribute('inert');
+          expect(slide).toHaveAttribute('aria-hidden', 'true');
+        }
+      });
+    });
+
+    it('offers a mobile "Kembali" control that is disabled on the first slide', () => {
+      render(<AssessmentFlow />);
+      expect(screen.getByRole('button', { name: /kembali/i })).toBeDisabled();
+    });
+
+    it('mobile "Kembali" goes to the previous slide', () => {
+      storeState.currentSlideIndex = 3;
+      render(<AssessmentFlow />);
+      const back = screen.getByRole('button', { name: /kembali/i });
+      expect(back).not.toBeDisabled();
+      fireEvent.click(back);
+      expect(storeState.setSlideIndex).toHaveBeenCalledWith(2);
+    });
+
+    it('labels the progress bar with the question position', () => {
+      storeState.currentSlideIndex = 4;
+      render(<AssessmentFlow />);
+      const progress = screen.getByRole('progressbar', { name: `Pertanyaan 5 dari ${v1Bank.length}` });
+      expect(progress).toHaveAttribute('aria-valuetext', `Pertanyaan 5 dari ${v1Bank.length}`);
+    });
+
+    it('does not move focus to the question heading on initial mount', () => {
+      storeState.currentSlideIndex = 3;
+      render(<AssessmentFlow />);
+      expect(document.activeElement?.tagName).not.toBe('H3');
+    });
+
+    it('moves focus to the new desktop question heading after a slide change', () => {
+      mockViewport(true);
+      storeState.currentSlideIndex = 3;
+      const { container, rerender } = render(<AssessmentFlow />);
+      storeState.currentSlideIndex = 4;
+      rerender(<AssessmentFlow />);
+      const desktopHeading = container.querySelector('.md\\:flex [data-slide] h3');
+      expect(desktopHeading).not.toBeNull();
+      expect(document.activeElement).toBe(desktopHeading);
+    });
+
+    it('moves focus to the current mobile slide heading on small screens', () => {
+      mockViewport(false);
+      storeState.currentSlideIndex = 3;
+      const { container, rerender } = render(<AssessmentFlow />);
+      storeState.currentSlideIndex = 4;
+      rerender(<AssessmentFlow />);
+      expect(document.activeElement).toBe(mobileSlides(container)[4].querySelector('h3'));
+    });
+
+    it('keeps an autofocused input focused when returning to the name question', () => {
+      mockViewport(true);
+      storeState.currentSlideIndex = 1;
+      const { rerender } = render(<AssessmentFlow />);
+      storeState.currentSlideIndex = 0;
+      rerender(<AssessmentFlow />);
+      expect(document.activeElement?.tagName).toBe('INPUT');
+    });
+  });
+});
