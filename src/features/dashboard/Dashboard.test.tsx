@@ -391,3 +391,165 @@ describe('audit-1109 one attempt per result and historical PDF', () => {
     expect(pdf.textContent).toContain('Test User');
   });
 });
+
+describe('audit-1109 review: shared save, attempt limit, failed PDF upload', () => {
+  const LIMIT_MESSAGE = 'Batas laporan tersimpan sudah tercapai. Hapus laporan lama di halaman Profil, lalu coba simpan lagi.';
+  const HISTORY_MESSAGE = 'PDF sudah terunduh, tetapi tidak dapat disimpan ke riwayat Anda.';
+
+  const callsTo = (path: string) =>
+    vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(path));
+  const saveButton = () => screen.getByRole('button', { name: /Simpan Laporan/ });
+  const downloadButton = () => screen.getByRole('button', { name: /Unduh PDF/ });
+
+  let alertSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  /** Stub fetch per endpoint; every save-attempt call gets the same response promise. */
+  function stubApi(save: Promise<unknown>, upload: unknown = { ok: true, status: 200 }) {
+    vi.stubGlobal('fetch', vi.fn((url: unknown) =>
+      String(url).endsWith('/api/save-attempt') ? save : Promise.resolve(upload)));
+  }
+
+  function deferredSave() {
+    let finish: (value: unknown) => void = () => {};
+    const promise = new Promise<unknown>((resolve) => { finish = resolve; });
+    return { promise, finish: (value: unknown) => finish(value) };
+  }
+
+  const savedResponse = { ok: true, status: 200, json: async () => ({ assessmentId: 'a1' }) };
+  const limitResponse = {
+    ok: false,
+    status: 429,
+    text: async () => '{"error":"Too many saved attempts"}',
+    json: async () => ({ error: 'Too many saved attempts' }),
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockNavigate.mockClear();
+    vi.mocked(generatePDF).mockClear();
+    session.status = 'signedIn';
+    vi.mocked(useAssessmentStore).mockReturnValue({
+      answers: { 'Q-01': 5 },
+      stage: 'adult',
+      userName: 'Test User',
+    });
+    alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  async function expectOneSharedAttempt(finish: (value: unknown) => void) {
+    await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
+    await act(async () => { finish(savedResponse); });
+
+    await waitFor(() => expect(callsTo('/api/upload-pdf')).toHaveLength(1));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+    const upload = callsTo('/api/upload-pdf')[0][1] as RequestInit;
+    expect((upload.body as FormData).get('assessmentId')).toBe('a1');
+    await waitFor(() => expect(downloadButton()).toBeEnabled());
+  }
+
+  // A disabled button ignores clicks, so the overlap is driven by two clicks before React re-renders
+  it('Unduh PDF then Simpan in the same tick send one save-attempt', async () => {
+    const save = deferredSave();
+    stubApi(save.promise);
+    renderLoaded();
+
+    const download = downloadButton();
+    const simpan = saveButton();
+    act(() => {
+      download.click();
+      simpan.click();
+    });
+
+    await expectOneSharedAttempt(save.finish);
+  });
+
+  it('Simpan then Unduh PDF in the same tick send one save-attempt', async () => {
+    const save = deferredSave();
+    stubApi(save.promise);
+    renderLoaded();
+
+    const download = downloadButton();
+    const simpan = saveButton();
+    act(() => {
+      simpan.click();
+      download.click();
+    });
+
+    await expectOneSharedAttempt(save.finish);
+  });
+
+  it('disables Simpan while the save-attempt of a download is pending', async () => {
+    const save = deferredSave();
+    stubApi(save.promise);
+    renderLoaded();
+
+    fireEvent.click(downloadButton());
+    await waitFor(() => expect(callsTo('/api/save-attempt')).toHaveLength(1));
+
+    expect(saveButton()).toBeDisabled();
+    fireEvent.click(saveButton());
+    await act(async () => { save.finish(savedResponse); });
+    await waitFor(() => expect(saveButton()).toBeEnabled());
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('disables Unduh PDF while a save runs', async () => {
+    const save = deferredSave();
+    stubApi(save.promise);
+    renderLoaded();
+
+    fireEvent.click(saveButton());
+
+    expect(downloadButton()).toBeDisabled();
+    fireEvent.click(downloadButton());
+    await act(async () => { save.finish(savedResponse); });
+    await waitFor(() => expect(downloadButton()).toBeEnabled());
+    expect(generatePDF).not.toHaveBeenCalled();
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+  });
+
+  it('Simpan at the saved-report limit (429) shows the Indonesian limit message', async () => {
+    stubApi(Promise.resolve(limitResponse));
+    renderLoaded();
+
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(LIMIT_MESSAGE));
+    await waitFor(() => expect(saveButton()).toBeEnabled());
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('Unduh PDF at the saved-report limit (429) shows the same limit message and uploads nothing', async () => {
+    stubApi(Promise.resolve(limitResponse));
+    renderLoaded();
+
+    fireEvent.click(downloadButton());
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(LIMIT_MESSAGE));
+    await waitFor(() => expect(downloadButton()).toBeEnabled());
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(callsTo('/api/upload-pdf')).toHaveLength(0);
+  });
+
+  it('tells the user when the downloaded PDF could not be stored (413)', async () => {
+    stubApi(Promise.resolve(savedResponse), { ok: false, status: 413, text: async () => '{"error":"File too large"}' });
+    renderLoaded();
+
+    fireEvent.click(downloadButton());
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(HISTORY_MESSAGE));
+    await waitFor(() => expect(downloadButton()).toBeEnabled());
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+  });
+});

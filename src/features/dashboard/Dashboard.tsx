@@ -20,6 +20,10 @@ type HistoricalReport = {
   createdAt?: string;
 };
 
+type SaveOutcome =
+  | { ok: true; assessmentId: string | null }
+  | { ok: false; status: number; detail: string };
+
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
   const { answers, stage, userName } = useAssessmentStore();
@@ -30,7 +34,7 @@ export default function Dashboard() {
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const saveInFlightRef = useRef(false);
-  const savedAssessmentIdRef = useRef<string | null>(null);
+  const saveAttemptRef = useRef<Promise<SaveOutcome> | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -99,26 +103,47 @@ export default function Dashboard() {
     })
   });
 
+  // Simpan and Unduh PDF share this one POST: whichever starts second reuses the first one's result.
+  // The outcome is a plain object because two callers cannot both read one Response body.
+  const saveAttemptOnce = (): Promise<SaveOutcome> => {
+    if (saveAttemptRef.current) return saveAttemptRef.current;
+    const attempt = (async (): Promise<SaveOutcome> => {
+      const res = await postAttempt();
+      if (res.ok) {
+        let assessmentId: string | null = null;
+        try {
+          assessmentId = ((await res.json()) as { assessmentId?: string }).assessmentId ?? null;
+        } catch { /* no usable body: saved, but without an id to attach a PDF to */ }
+        return { ok: true, assessmentId };
+      }
+      if (res.status === 429) {
+        // Alerted here so overlapping callers of one attempt show the message once
+        alert(t('save_limit_reached'));
+        return { ok: false, status: 429, detail: "" };
+      }
+      return { ok: false, status: res.status, detail: await res.text() };
+    })();
+    saveAttemptRef.current = attempt;
+    // A stored attempt stays cached so later clicks reuse it; a failed one is dropped so it can be retried
+    const drop = () => { if (saveAttemptRef.current === attempt) saveAttemptRef.current = null; };
+    attempt.then((outcome) => { if (!outcome.ok) drop(); }, drop);
+    return attempt;
+  };
+
   const handleSave = async () => {
     // The ref stops a second click that lands before the disabled state is rendered
     if (saveInFlightRef.current) return;
-    // A PDF download already saved this result: do not create a second attempt
-    if (savedAssessmentIdRef.current) {
-      navigate('/profile');
-      return;
-    }
     saveInFlightRef.current = true;
     setSaving(true);
     try {
-      const res = await postAttempt();
-      if (res.ok) {
+      const outcome = await saveAttemptOnce();
+      if (outcome.ok) {
          navigate('/profile');
-      } else if (res.status === 401) {
+      } else if (outcome.status === 401) {
          // Session expired: log in again and come back; the answers stay in localStorage
          signIn('/dashboard');
-      } else {
-         const errData = await res.text();
-         alert(`${t('fail_save')} Server Error: ${res.status} - ${errData}`);
+      } else if (outcome.status !== 429) {
+         alert(`${t('fail_save')} Server Error: ${outcome.status} - ${outcome.detail}`);
       }
     } catch (e) {
       console.error(e);
@@ -144,17 +169,12 @@ export default function Dashboard() {
 
       // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
       if (isSignedIn && pdfBlob && !historicalReport) {
-        // 1. Save the result once to get assessmentId; later downloads reuse it
-        let assessmentId = savedAssessmentIdRef.current;
-        if (!assessmentId) {
-          const resSave = await postAttempt();
-          if (resSave.ok) {
-            assessmentId = (await resSave.json()).assessmentId as string;
-            savedAssessmentIdRef.current = assessmentId;
-          } else {
-            console.error(`Saving attempt failed: ${resSave.status}`);
-          }
+        // 1. Save the result once to get assessmentId; later downloads and Simpan reuse it
+        const outcome = await saveAttemptOnce();
+        if (!outcome.ok && outcome.status !== 429) {
+          console.error(`Saving attempt failed: ${outcome.status}`);
         }
+        const assessmentId = outcome.ok ? outcome.assessmentId : null;
 
         if (assessmentId) {
            // 2. Upload PDF to R2 (the upload overwrites the same key)
@@ -162,13 +182,19 @@ export default function Dashboard() {
            formData.append("file", pdfBlob, "report.pdf");
            formData.append("assessmentId", assessmentId);
 
-           const resUpload = await apiFetch("/api/upload-pdf", {
-             method: "POST",
-             body: formData
-           });
-           if (!resUpload.ok) {
-             console.error(`PDF upload failed: ${resUpload.status}`);
+           // The file is already on the user's device here, so a failed upload must not read as a failed PDF
+           let uploaded = false;
+           try {
+             const resUpload = await apiFetch("/api/upload-pdf", {
+               method: "POST",
+               body: formData
+             });
+             uploaded = resUpload.ok;
+             if (!uploaded) console.error(`PDF upload failed: ${resUpload.status}`);
+           } catch (e) {
+             console.error(e);
            }
+           if (!uploaded) alert(t('pdf_history_failed'));
         }
       }
     } catch (e) {
@@ -228,7 +254,7 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
              {!historicalReport && isSignedIn && (
-               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={saving}>
+               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={saving || generatingPdf}>
                  <Save className="w-4 h-4 mr-2" /> {t('save_report')}
                </Button>
              )}
@@ -238,7 +264,7 @@ export default function Dashboard() {
                  <Save className="w-4 h-4 mr-2" /> {t('login_save')}
                </Button>
              )}
-             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf}>
+             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf || saving}>
                {generatingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} 
                {t('download_pdf')}
              </Button>

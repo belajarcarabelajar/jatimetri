@@ -20,6 +20,8 @@
   "fail_pdf": "Gagal membuat PDF.",
   "fail_save": "Gagal menyimpan laporan.",
   "network_error": "Terjadi kesalahan jaringan:",
+  "save_limit_reached": "Batas laporan tersimpan sudah tercapai. Hapus laporan lama di halaman Profil, lalu coba simpan lagi.",
+  "pdf_history_failed": "PDF sudah terunduh, tetapi tidak dapat disimpan ke riwayat Anda.",
   "nav_assessment": "Assessment",
   "nav_dashboard": "Dashboard",
   "nav_profile": "Profil",
