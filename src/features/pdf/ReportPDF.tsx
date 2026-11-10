@@ -5,10 +5,13 @@ import type { DashboardResult } from "@/data/scoring/scoring-matrix";
 
 type ReportPDFProps = {
   result: DashboardResult | null;
-  userName: string;
+  /** Omitted for a historical report: the name is not stored with it, so the name line is hidden. */
+  userName?: string;
+  /** Date of the report; defaults to today for a live result. */
+  date?: Date;
 };
 
-export const ReportPDF = forwardRef<HTMLDivElement, ReportPDFProps>(({ result, userName }, ref) => {
+export const ReportPDF = forwardRef<HTMLDivElement, ReportPDFProps>(({ result, userName, date }, ref) => {
   const { i18n } = useTranslation();
   if (!result) return null;
 
@@ -30,9 +33,13 @@ export const ReportPDF = forwardRef<HTMLDivElement, ReportPDFProps>(({ result, u
         <h1 className="text-6xl font-bold text-primary mb-4 tracking-tight">Jatimetri</h1>
         <h2 className="text-3xl font-semibold mb-8 text-slate-700">Laporan Assessment Pribadi</h2>
         <div className="mt-20 space-y-2">
-          <p className="text-xl text-slate-500">Disiapkan untuk:</p>
-          <p className="text-4xl font-bold text-slate-800">{userName}</p>
-          <p className="text-lg text-slate-500 mt-4">Tanggal: {new Date().toLocaleDateString(i18n.language)}</p>
+          {userName !== undefined && (
+            <>
+              <p className="text-xl text-slate-500">Disiapkan untuk:</p>
+              <p className="text-4xl font-bold text-slate-800">{userName}</p>
+            </>
+          )}
+          <p className="text-lg text-slate-500 mt-4">Tanggal: {(date ?? new Date()).toLocaleDateString(i18n.language)}</p>
         </div>
         
         <div className="mt-32 max-w-2xl bg-amber-50 p-6 rounded-xl border border-amber-200">

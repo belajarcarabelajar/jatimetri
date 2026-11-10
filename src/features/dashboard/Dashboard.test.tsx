@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Dashboard from './Dashboard';
 import { useAssessmentStore } from '@/store/useAssessmentStore';
@@ -277,5 +277,117 @@ describe('Dashboard – save & login', () => {
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('500 - boom')));
     alertSpy.mockRestore();
+  });
+});
+
+describe('audit-1109 one attempt per result and historical PDF', () => {
+  const callsTo = (path: string) =>
+    vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(path));
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockNavigate.mockClear();
+    vi.mocked(generatePDF).mockClear();
+    session.status = 'signedIn';
+    vi.mocked(useAssessmentStore).mockReturnValue({
+      answers: { 'Q-01': 5 },
+      stage: 'adult',
+      userName: 'Test User',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ assessmentId: 'a1' }) }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function downloadOnce(expectedUploads: number) {
+    fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
+    await waitFor(() => expect(callsTo('/api/upload-pdf')).toHaveLength(expectedUploads));
+    // The button is disabled while a download runs
+    await waitFor(() => expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeEnabled());
+  }
+
+  it('downloading the PDF twice saves one attempt and uploads the PDF again under the same id', async () => {
+    renderLoaded();
+    await downloadOnce(1);
+    await downloadOnce(2);
+
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+    const secondUpload = callsTo('/api/upload-pdf')[1][1] as RequestInit;
+    expect((secondUpload.body as FormData).get('assessmentId')).toBe('a1');
+  });
+
+  it('saving after a download does not create a second attempt', async () => {
+    renderLoaded();
+    await downloadOnce(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+  });
+
+  it('a double click on save sends one request', async () => {
+    let finish: (value: unknown) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finish = resolve; })));
+    renderLoaded();
+
+    // Both clicks land before React re-renders, so only the in-flight guard can stop the second
+    const button = screen.getByRole('button', { name: /Simpan Laporan/ });
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+    await act(async () => { finish({ ok: true, status: 200 }); });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
+  });
+
+  it('disables the save button while the request runs', async () => {
+    let finish: (value: unknown) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finish = resolve; })));
+    renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
+
+    expect(screen.getByRole('button', { name: /Simpan Laporan/ })).toBeDisabled();
+    await act(async () => { finish({ ok: false, status: 500, text: async () => 'boom' }); });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Simpan Laporan/ })).toBeEnabled());
+  });
+
+  it('a historical report gets its own date and no local name in the PDF and its file name', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    sessionStorage.setItem('view-historical-report', JSON.stringify({
+      dominancePattern: 'Historical Pattern',
+      radarData: [{ subject: 'Test', A: 50, fullMark: 100 }],
+      tendencies: [],
+      stage: 'adult',
+      // 2025-01-15T12:00:00Z as Unix seconds, the unit Profile.tsx writes
+      createdAt: 1736942400,
+    }));
+    renderLoaded();
+
+    const pdf = document.getElementById('pdf-container') as HTMLElement;
+    expect(pdf.textContent).not.toContain('Test User');
+    expect(pdf.textContent).not.toContain('Disiapkan untuk');
+    expect(within(pdf).getByText(/^Tanggal:/).textContent).toContain('2025');
+
+    fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
+
+    await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(generatePDF).mock.calls[0][1]).toBe('Inner_Potential_Assessment_2025-01-15.pdf');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeEnabled());
+    expect(fetch).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('a live result keeps the name in the PDF', () => {
+    renderLoaded();
+
+    const pdf = document.getElementById('pdf-container') as HTMLElement;
+    expect(pdf.textContent).toContain('Disiapkan untuk');
+    expect(pdf.textContent).toContain('Test User');
   });
 });
