@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { MainLayout } from './MainLayout';
+import { useAssessmentStore } from '@/store/useAssessmentStore';
 
 const session = vi.hoisted(() => ({
   status: 'signedOut' as 'loading' | 'signedIn' | 'signedOut',
@@ -105,5 +106,29 @@ describe('MainLayout', () => {
     expect(session.signIn).toHaveBeenCalled();
     // The drawer closes after starting the login
     expect(screen.getAllByRole('button', { name: 'Masuk' })).toHaveLength(1);
+  });
+});
+
+describe('audit-1109 logout clears the local assessment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    session.status = 'signedIn';
+    session.email = 'ani@example.com';
+    useAssessmentStore.setState({ stage: 'adult', userName: 'Ani', answers: { 'Q-ID-01': 'Ani', 'Q-01': 5 } });
+  });
+
+  it('"Keluar" empties the name and answers in the store and in localStorage before the sign-out finishes', () => {
+    expect(localStorage.getItem('jatimetri-v1-storage')).toContain('Ani');
+    renderLayout('/dashboard');
+
+    session.signOut.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(within(desktopNav()).getByRole('button', { name: /Keluar/ }));
+
+    expect(session.signOut).toHaveBeenCalled();
+    expect(useAssessmentStore.getState().answers).toEqual({});
+    const persisted = JSON.parse(localStorage.getItem('jatimetri-v1-storage') ?? '{}');
+    expect(persisted.state).toMatchObject({ stage: null, userName: '', answers: {} });
+    expect(localStorage.getItem('jatimetri-v1-storage')).not.toContain('Ani');
   });
 });

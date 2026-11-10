@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate } from "react-router";
 import { LogOut, Menu, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSession } from "@/lib/auth";
+import { useAssessmentStore } from "@/store/useAssessmentStore";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function MainLayout() {
@@ -13,8 +14,12 @@ export function MainLayout() {
   const isSignedIn = status === "signedIn";
   const isSignedOut = status === "signedOut";
 
+  const resetAssessment = useAssessmentStore((s) => s.resetAssessment);
+
   const handleSignOut = async () => {
     setIsMobileMenuOpen(false);
+    // The name and answers persist in localStorage; clear them so the next person on this browser cannot read them.
+    resetAssessment();
     // Leave first: on a protected page (/profile) a signed-out state would otherwise
     // make RequireSession start a new login before the navigation happens.
     navigate("/");

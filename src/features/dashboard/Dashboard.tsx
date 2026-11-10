@@ -20,6 +20,10 @@ type HistoricalReport = {
   createdAt?: string;
 };
 
+type SaveOutcome =
+  | { ok: true; assessmentId: string | null }
+  | { ok: false; status: number; detail: string };
+
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
   const { answers, stage, userName } = useAssessmentStore();
@@ -28,6 +32,9 @@ export default function Dashboard() {
   const { status: sessionStatus, signIn } = useSession();
   const isSignedIn = sessionStatus === "signedIn";
   const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const saveAttemptRef = useRef<Promise<SaveOutcome> | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,31 +86,71 @@ export default function Dashboard() {
   })();
   const effectiveStage = historicalReport ? historicalReport.stage : (stage || stageFromAnswer || "adult");
 
-  const handleSave = async () => {
-    try {
-      const res = await apiFetch("/api/save-attempt", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({
-            stage: effectiveStage,
-            answers,
-            dominancePattern: result.dominancePattern,
-            radarData: result.radarData,
-            tendencies: result.tendencies
-         })
-      });
+  // createdAt of a historical report is Unix seconds (written by Profile.tsx)
+  const historicalDate = historicalReport?.createdAt
+    ? new Date(Number(historicalReport.createdAt) * 1000)
+    : undefined;
+
+  const postAttempt = () => apiFetch("/api/save-attempt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stage: effectiveStage,
+      answers,
+      dominancePattern: result.dominancePattern,
+      radarData: result.radarData,
+      tendencies: result.tendencies
+    })
+  });
+
+  // Simpan and Unduh PDF share this one POST: whichever starts second reuses the first one's result.
+  // The outcome is a plain object because two callers cannot both read one Response body.
+  const saveAttemptOnce = (): Promise<SaveOutcome> => {
+    if (saveAttemptRef.current) return saveAttemptRef.current;
+    const attempt = (async (): Promise<SaveOutcome> => {
+      const res = await postAttempt();
       if (res.ok) {
+        let assessmentId: string | null = null;
+        try {
+          assessmentId = ((await res.json()) as { assessmentId?: string }).assessmentId ?? null;
+        } catch { /* no usable body: saved, but without an id to attach a PDF to */ }
+        return { ok: true, assessmentId };
+      }
+      if (res.status === 429) {
+        // Alerted here so overlapping callers of one attempt show the message once
+        alert(t('save_limit_reached'));
+        return { ok: false, status: 429, detail: "" };
+      }
+      return { ok: false, status: res.status, detail: await res.text() };
+    })();
+    saveAttemptRef.current = attempt;
+    // A stored attempt stays cached so later clicks reuse it; a failed one is dropped so it can be retried
+    const drop = () => { if (saveAttemptRef.current === attempt) saveAttemptRef.current = null; };
+    attempt.then((outcome) => { if (!outcome.ok) drop(); }, drop);
+    return attempt;
+  };
+
+  const handleSave = async () => {
+    // The ref stops a second click that lands before the disabled state is rendered
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
+    setSaving(true);
+    try {
+      const outcome = await saveAttemptOnce();
+      if (outcome.ok) {
          navigate('/profile');
-      } else if (res.status === 401) {
+      } else if (outcome.status === 401) {
          // Session expired: log in again and come back; the answers stay in localStorage
          signIn('/dashboard');
-      } else {
-         const errData = await res.text();
-         alert(`${t('fail_save')} Server Error: ${res.status} - ${errData}`);
+      } else if (outcome.status !== 429) {
+         alert(`${t('fail_save')} Server Error: ${outcome.status} - ${outcome.detail}`);
       }
     } catch (e) {
       console.error(e);
       alert(`${t('network_error')} ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      saveInFlightRef.current = false;
+      setSaving(false);
     }
   };
 
@@ -113,40 +160,41 @@ export default function Dashboard() {
       // html2canvas + jspdf are heavy; load them only when a download is requested
       const { generatePDF } = await import("../pdf/generatePDF");
       const safeUserName = userName || "Pengguna";
-      const pdfBlob = await generatePDF("pdf-container", `Inner_Potential_Assessment_${safeUserName}_${new Date().toISOString().split('T')[0]}.pdf`);
-      
+      const fileDate = (historicalDate ?? new Date()).toISOString().split('T')[0];
+      // The name is not stored with a historical report, so its file name must not carry the local one
+      const fileName = historicalReport
+        ? `Inner_Potential_Assessment_${fileDate}.pdf`
+        : `Inner_Potential_Assessment_${safeUserName}_${fileDate}.pdf`;
+      const pdfBlob = await generatePDF("pdf-container", fileName);
+
       // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
       if (isSignedIn && pdfBlob && !historicalReport) {
-        // 1. Save Result first to get assessmentId
-        const resSave = await apiFetch("/api/save-attempt", {
-           method: "POST",
-           headers: { "Content-Type": "application/json" },
-           body: JSON.stringify({
-              stage: effectiveStage,
-              answers,
-              dominancePattern: result.dominancePattern,
-              radarData: result.radarData,
-              tendencies: result.tendencies
-           })
-        });
+        // 1. Save the result once to get assessmentId; later downloads and Simpan reuse it
+        const outcome = await saveAttemptOnce();
+        if (!outcome.ok && outcome.status !== 429) {
+          console.error(`Saving attempt failed: ${outcome.status}`);
+        }
+        const assessmentId = outcome.ok ? outcome.assessmentId : null;
 
-        if (resSave.ok) {
-           const { assessmentId } = await resSave.json();
-           
-           // 2. Upload PDF to R2
+        if (assessmentId) {
+           // 2. Upload PDF to R2 (the upload overwrites the same key)
            const formData = new FormData();
            formData.append("file", pdfBlob, "report.pdf");
            formData.append("assessmentId", assessmentId);
 
-           const resUpload = await apiFetch("/api/upload-pdf", {
-             method: "POST",
-             body: formData
-           });
-           if (!resUpload.ok) {
-             console.error(`PDF upload failed: ${resUpload.status}`);
+           // The file is already on the user's device here, so a failed upload must not read as a failed PDF
+           let uploaded = false;
+           try {
+             const resUpload = await apiFetch("/api/upload-pdf", {
+               method: "POST",
+               body: formData
+             });
+             uploaded = resUpload.ok;
+             if (!uploaded) console.error(`PDF upload failed: ${resUpload.status}`);
+           } catch (e) {
+             console.error(e);
            }
-        } else {
-           console.error(`Saving attempt failed: ${resSave.status}`);
+           if (!uploaded) alert(t('pdf_history_failed'));
         }
       }
     } catch (e) {
@@ -199,14 +247,14 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold text-primary">{t('report_title')}</h1>
             <p className="text-muted-foreground mt-1 capitalize">
               {historicalReport
-                ? `${t('category')}: ${historicalReport.stage}${historicalReport.createdAt ? ` · ${new Date(Number(historicalReport.createdAt) * 1000).toLocaleDateString(i18n.language)}` : ''}`
+                ? `${t('category')}: ${historicalReport.stage}${historicalDate ? ` · ${historicalDate.toLocaleDateString(i18n.language)}` : ''}`
                 : `${t('prepared_for')}: ${userName || 'Pengguna'}`
               }
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
              {!historicalReport && isSignedIn && (
-               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave}>
+               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={saving || generatingPdf}>
                  <Save className="w-4 h-4 mr-2" /> {t('save_report')}
                </Button>
              )}
@@ -216,7 +264,7 @@ export default function Dashboard() {
                  <Save className="w-4 h-4 mr-2" /> {t('login_save')}
                </Button>
              )}
-             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf}>
+             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf || saving}>
                {generatingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} 
                {t('download_pdf')}
              </Button>
@@ -280,7 +328,7 @@ export default function Dashboard() {
         </Card>
 
       </div>
-      <ReportPDF ref={pdfContainerRef} result={result} userName={userName || "Pengguna"} />
+      <ReportPDF ref={pdfContainerRef} result={result} userName={historicalReport ? undefined : (userName || "Pengguna")} date={historicalDate} />
     </div>
   );
 }
