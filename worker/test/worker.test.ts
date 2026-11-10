@@ -192,7 +192,7 @@ describe('API with session', () => {
 
     const upload = (id: string) => {
       const fd = new FormData();
-      fd.append('file', new File([new Uint8Array([37, 80, 68, 70])], 'report.pdf'));
+      fd.append('file', new File([new Uint8Array([37, 80, 68, 70, 45])], 'report.pdf'));
       fd.append('assessmentId', id);
       return s.req('/api/upload-pdf', { method: 'POST', headers: h, body: fd });
     };
@@ -275,5 +275,136 @@ describe('API with session', () => {
     const res = await s.req('/api/assessments/11111111-1111-4111-8111-111111111111', { method: 'DELETE', headers: { cookie, origin: ORIGIN } });
     expect(res.status).toBe(404);
     expect(s.DB.raw.prepare('SELECT COUNT(*) AS n FROM assessments').get()).toEqual({ n: 1 });
+  });
+});
+
+describe('audit-1109 Worker API limits', () => {
+  const PDF_HEAD = [37, 80, 68, 70, 45]; // %PDF-
+
+  async function session() {
+    const s = setup();
+    const cookie = await signedIn(s);
+    const h = { cookie, origin: ORIGIN };
+    const post = (body: string) =>
+      s.req('/api/save-attempt', { method: 'POST', headers: { ...h, 'content-type': 'application/json' }, body });
+    const upload = (id: string, parts: BlobPart[]) => {
+      const fd = new FormData();
+      fd.append('file', new File(parts, 'report.pdf'));
+      fd.append('assessmentId', id);
+      return s.req('/api/upload-pdf', { method: 'POST', headers: h, body: fd });
+    };
+    const seed = (n: number) => {
+      const insert = s.DB.raw.prepare('INSERT INTO assessments (id, user_id, stage, created_at) VALUES (?, ?, ?, ?)');
+      for (let i = 0; i < n; i++) insert.run(`seed-${i}`, EMAIL, 'adult', 1000 + i);
+    };
+    const count = (table: string) => (s.DB.raw.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+    return { s, cookie, h, post, upload, seed, count };
+  }
+
+  const valid = { stage: 'adult', dominancePattern: 'Creative Maker', radarData: [], tendencies: [] };
+
+  test('save-attempt answers 413 to a 100 KB body and stores nothing', async () => {
+    const t = await session();
+    const res = await t.post(JSON.stringify({ ...valid, answers: { note: 'x'.repeat(100 * 1024) } }));
+    expect(res.status).toBe(413);
+    expect(typeof ((await res.json()) as { error: unknown }).error).toBe('string');
+    expect(t.count('assessments')).toBe(0);
+  });
+
+  test('save-attempt answers 400 to broken JSON', async () => {
+    const t = await session();
+    const res = await t.post('{"stage": "adult"');
+    expect(res.status).toBe(400);
+    expect(typeof ((await res.json()) as { error: unknown }).error).toBe('string');
+  });
+
+  test('save-attempt answers 400 to wrong field types or sizes', async () => {
+    const t = await session();
+    const bad: unknown[] = [
+      { ...valid, stage: { a: 1 } },
+      { ...valid, stage: 'senior' },
+      { ...valid, dominancePattern: 'x'.repeat(121) },
+      { ...valid, dominancePattern: 7 },
+      { ...valid, radarData: 'not an array' },
+      { ...valid, radarData: [1, 2, 3, 4, 5, 6, 7] },
+      { ...valid, tendencies: [1, 2, 3, 4] },
+      { ...valid, tendencies: {} },
+      null,
+      [],
+    ];
+    for (const body of bad) {
+      const res = await t.post(JSON.stringify(body));
+      expect([JSON.stringify(body).slice(0, 60), res.status]).toEqual([JSON.stringify(body).slice(0, 60), 400]);
+    }
+    expect(t.count('assessments')).toBe(0);
+  });
+
+  test('save-attempt accepts the full body the dashboard sends, ignoring answers', async () => {
+    const t = await session();
+    const answers: Record<string, unknown> = { name: 'Budi Santoso', note: 'catatan bebas '.repeat(40) };
+    for (let i = 1; i <= 42; i++) answers[`q${i}`] = (i % 5) + 1;
+    const body = {
+      stage: 'teenager',
+      answers,
+      dominancePattern: 'Analytical Strategist Plus',
+      radarData: ['A', 'B', 'C', 'D', 'E', 'F'].map((subject, i) => ({ subject, A: 40 + i * 10, fullMark: 100 })),
+      tendencies: [1, 2, 3].map((i) => ({ title: `Kecenderungan ${i}`, description: 'd'.repeat(120) })),
+    };
+    const res = await t.post(JSON.stringify(body));
+    expect(res.status).toBe(200);
+    const row = t.s.DB.raw.prepare('SELECT stage, dominance_pattern, radar_data, tendencies FROM assessments').get() as Record<string, string>;
+    expect(row.stage).toBe('teenager');
+    expect(row.dominance_pattern).toBe('Analytical Strategist Plus');
+    expect(JSON.parse(row.radar_data)).toEqual(body.radarData);
+    expect(JSON.parse(row.tendencies)).toEqual(body.tendencies);
+  });
+
+  test('save-attempt stores attempt 200 and answers 429 to attempt 201', async () => {
+    const t = await session();
+    t.seed(199);
+    expect((await t.post(JSON.stringify(valid))).status).toBe(200);
+    const res = await t.post(JSON.stringify(valid));
+    expect(res.status).toBe(429);
+    expect(typeof ((await res.json()) as { error: unknown }).error).toBe('string');
+    expect(t.count('assessments')).toBe(200);
+  });
+
+  test('upload-pdf answers 413 to a 6 MB file and 400 to a text file, before R2', async () => {
+    const t = await session();
+    const { assessmentId } = (await (await t.post(JSON.stringify(valid))).json()) as { assessmentId: string };
+    const big = new Uint8Array(6 * 1024 * 1024);
+    big.set(PDF_HEAD);
+    expect((await t.upload(assessmentId, [big])).status).toBe(413);
+    expect((await t.upload(assessmentId, ['hello, not a pdf'])).status).toBe(400);
+    expect((await t.upload(assessmentId, [new Uint8Array([37, 80, 68, 70])])).status).toBe(400);
+    expect(t.s.R2.objects.size).toBe(0);
+    expect((await t.upload(assessmentId, [new Uint8Array([...PDF_HEAD, 49, 46, 55])])).status).toBe(200);
+    expect(t.s.R2.objects.size).toBe(1);
+  });
+
+  test('reports returns the newest 200 of 205 rows', async () => {
+    const t = await session();
+    t.seed(205);
+    const res = await t.s.req('/api/reports', { headers: t.h });
+    const { reports } = (await res.json()) as { reports: { id: string }[] };
+    expect(reports.length).toBe(200);
+    expect(reports[0].id).toBe('seed-204');
+    expect(reports[199].id).toBe('seed-5');
+  });
+
+  test('account delete ends the sessions before it touches R2 and leaves no rows', async () => {
+    const t = await session();
+    await t.post(JSON.stringify(valid));
+    const list = t.s.R2.list.bind(t.s.R2);
+    let sessionsAtFirstList: number | null = null;
+    t.s.R2.list = async (o) => {
+      sessionsAtFirstList ??= t.count('sessions');
+      return list(o);
+    };
+    const del = await t.s.req('/api/account', { method: 'DELETE', headers: t.h });
+    expect(del.status).toBe(200);
+    expect(sessionsAtFirstList).toBe(0);
+    expect((await t.s.req('/api/me', { headers: { cookie: t.cookie } })).status).toBe(401);
+    for (const table of ['assessments', 'users', 'sessions']) expect([table, t.count(table)]).toEqual([table, 0]);
   });
 });

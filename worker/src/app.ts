@@ -69,13 +69,39 @@ interface AssessmentRow {
   created_at: number | null;
 }
 
-// Shape sent by src/features/dashboard/Dashboard.tsx; not validated at runtime.
-interface SaveAttemptBody {
-  stage?: string;
-  answers?: Record<string, unknown>;
-  dominancePattern?: string;
-  radarData?: unknown[];
-  tendencies?: unknown[];
+const MAX_ATTEMPT_BODY_BYTES = 16 * 1024;
+const MAX_ATTEMPTS_PER_USER = 200;
+const MAX_PDF_BYTES = 5 * 1024 * 1024;
+const MAX_REPORTS_LISTED = 200;
+const MAX_DOMINANCE_PATTERN_CHARS = 120;
+const MAX_RADAR_ENTRIES = 6;
+const MAX_TENDENCIES = 3;
+const STAGES = ['child', 'teenager', 'adult'];
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
+
+// The stored part of the body sent by src/features/dashboard/Dashboard.tsx. The client also sends
+// `answers`, which is not stored; unknown fields are ignored.
+interface SaveAttempt {
+  stage: string;
+  dominancePattern: string;
+  radarData: unknown[];
+  tendencies: unknown[];
+}
+
+function parseSaveAttempt(text: string): SaveAttempt | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return null;
+  const { stage, dominancePattern = '', radarData = [], tendencies = [] } = body as Record<string, unknown>;
+  if (typeof stage !== 'string' || !STAGES.includes(stage)) return null;
+  if (typeof dominancePattern !== 'string' || dominancePattern.length > MAX_DOMINANCE_PATTERN_CHARS) return null;
+  if (!Array.isArray(radarData) || radarData.length > MAX_RADAR_ENTRIES) return null;
+  if (!Array.isArray(tendencies) || tendencies.length > MAX_TENDENCIES) return null;
+  return { stage, dominancePattern, radarData, tendencies };
 }
 
 /** Program id registered in the BCB apex (bcb packages/data/src/akun/sso-program.ts). */
@@ -255,8 +281,15 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
 
   app.post('/api/save-attempt', async (c) => {
     const userId = c.get('userId');
-    const body = await c.req.json<SaveAttemptBody>();
+    if (Number(c.req.header('content-length') ?? 0) > MAX_ATTEMPT_BODY_BYTES) return c.json({ error: 'Payload too large' }, 413);
+    const raw = await c.req.arrayBuffer();
+    if (raw.byteLength > MAX_ATTEMPT_BODY_BYTES) return c.json({ error: 'Payload too large' }, 413);
+    const body = parseSaveAttempt(new TextDecoder().decode(raw));
+    if (body === null) return c.json({ error: 'Invalid body' }, 400);
     const DB = c.env.DB;
+
+    const saved = await DB.prepare('SELECT COUNT(*) AS n FROM assessments WHERE user_id = ?').bind(userId).first<{ n: number }>();
+    if ((saved?.n ?? 0) >= MAX_ATTEMPTS_PER_USER) return c.json({ error: 'Too many saved attempts' }, 429);
 
     await DB.prepare('INSERT OR IGNORE INTO users (id, email) VALUES (?, ?)').bind(userId, userId).run();
 
@@ -266,10 +299,10 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
     ).bind(
       assessmentId,
       userId,
-      body.stage || 'unknown',
-      body.dominancePattern || '',
-      JSON.stringify(body.radarData || []),
-      JSON.stringify(body.tendencies || []),
+      body.stage,
+      body.dominancePattern,
+      JSON.stringify(body.radarData),
+      JSON.stringify(body.tendencies),
     ).run();
 
     return c.json({ success: true, assessmentId });
@@ -277,8 +310,8 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
 
   app.get('/api/reports', async (c) => {
     const { results } = await c.env.DB.prepare(
-      'SELECT * FROM assessments WHERE user_id = ? ORDER BY created_at DESC'
-    ).bind(c.get('userId')).all<AssessmentRow>();
+      'SELECT * FROM assessments WHERE user_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).bind(c.get('userId'), MAX_REPORTS_LISTED).all<AssessmentRow>();
     return c.json({ success: true, reports: results || [] });
   });
 
@@ -301,10 +334,11 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
     const userId = c.get('userId');
     const DB = c.env.DB;
 
+    // Sessions go first, so a request that arrives during the delete cannot write the data back.
+    await sessions(DB).removeAllFor(userId);
     const pdfsDeleted = await deleteR2Prefix(c.env.REPORTS_BUCKET, `${userId}/`);
     await DB.prepare('DELETE FROM assessments WHERE user_id = ?').bind(userId).run();
     await DB.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
-    await sessions(DB).removeAllFor(userId);
 
     c.header('set-cookie', CLEAR_SESSION_COOKIE);
     return c.json({ success: true, pdfsDeleted });
@@ -319,10 +353,15 @@ export function createApp(deps: { now?: () => Date; random?: (n: number) => Uint
     if (!(file instanceof File) || typeof assessmentId !== 'string' || !RE_ASSESSMENT_ID.test(assessmentId)) {
       return c.json({ error: 'Missing file or assessmentId' }, 400);
     }
+    if (file.size > MAX_PDF_BYTES) return c.json({ error: 'File too large' }, 413);
+    const bytes = await file.arrayBuffer();
+    const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, PDF_MAGIC.length));
+    if (head.length < PDF_MAGIC.length || PDF_MAGIC.some((b, i) => head[i] !== b)) return c.json({ error: 'Not a PDF file' }, 400);
+
     const owned = await c.env.DB.prepare('SELECT id FROM assessments WHERE id = ? AND user_id = ?').bind(assessmentId, userId).first();
     if (owned === null) return c.json({ error: 'Not found' }, 404);
 
-    await c.env.REPORTS_BUCKET.put(`${userId}/${assessmentId}.pdf`, await file.arrayBuffer(), {
+    await c.env.REPORTS_BUCKET.put(`${userId}/${assessmentId}.pdf`, bytes, {
       httpMetadata: { contentType: 'application/pdf' },
     });
     return c.json({ success: true });
