@@ -164,8 +164,8 @@ export default function Dashboard() {
       const fileDate = (historicalDate ?? new Date()).toISOString().split('T')[0];
       // The name is not stored with a historical report, so its file name must not carry the local one
       const fileName = historicalReport
-        ? `Inner_Potential_Assessment_${fileDate}.pdf`
-        : `Inner_Potential_Assessment_${safeUserName}_${fileDate}.pdf`;
+        ? `Jatimetri_${fileDate}.pdf`
+        : `Jatimetri_${safeUserName}_${fileDate}.pdf`;
       await generatePDF("pdf-container", fileName);
     } catch (e) {
       console.error(e);
