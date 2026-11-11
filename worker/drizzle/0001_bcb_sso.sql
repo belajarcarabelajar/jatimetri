@@ -1,6 +1,6 @@
 -- BCB unified login (replaces Clerk, 2026-11-06).
 -- Idempotent on purpose: apply with
---   bunx wrangler d1 execute inner_potential_db --remote --file worker/drizzle/0001_bcb_sso.sql
+--   bunx wrangler d1 execute jatimetri-db --remote --file worker/drizzle/0001_bcb_sso.sql
 -- From now on users.id and assessments.user_id hold the normalised BCB email instead of a Clerk user id.
 -- Rows written under Clerk ids stay in place but are no longer reachable by anyone.
 

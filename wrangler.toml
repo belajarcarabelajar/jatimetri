@@ -18,16 +18,16 @@ routes = [
 [env.production]
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "inner_potential_db"
-database_id = "dd1e85a5-07ad-43ca-8ff5-c65621e690ac"
+database_name = "jatimetri-db"
+database_id = "7d72aa42-12c0-44b5-b274-265e1e97dfce"
 [[env.production.r2_buckets]]
 binding = "REPORTS_BUCKET"
 bucket_name = "jatimetri-reports"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "inner_potential_db"
-database_id = "dd1e85a5-07ad-43ca-8ff5-c65621e690ac"
+database_name = "jatimetri-db"
+database_id = "7d72aa42-12c0-44b5-b274-265e1e97dfce"
 
 [[r2_buckets]]
 binding = "REPORTS_BUCKET"
