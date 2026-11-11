@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Purges the Clerk-era rows (ids without '@', see worker/drizzle/0001_bcb_sso.sql) from the production
-// D1 database inner_potential_db and their PDFs from the R2 bucket jatimetri-reports.
+// D1 database jatimetri-db and their PDFs from the R2 bucket jatimetri-reports.
 //
 //   bun scripts/purge-clerk-era.ts --backup-file <path>                 dry run: counts and statements, no command run
 //   bun scripts/purge-clerk-era.ts --apply-backup --backup-file <path>  export the remote D1 to <path> (new file only)
@@ -12,7 +12,7 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 
-export const D1_NAME = 'inner_potential_db';
+export const D1_NAME = 'jatimetri-db';
 export const R2_BUCKET = 'jatimetri-reports';
 
 const USERS_WHERE = "id NOT LIKE '%@%'";

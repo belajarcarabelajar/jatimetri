@@ -104,7 +104,7 @@ describe('purge-clerk-era gates', () => {
     const { deps, commands } = fakeDeps((f) => writeFileSync(f, dump));
     expect(await purgeClerkEra(['--apply-backup', '--backup-file', file], deps)).toBe(0);
     expect(commands).toEqual([
-      ['bunx', 'wrangler', 'd1', 'export', 'inner_potential_db', '--remote', '--output', file],
+      ['bunx', 'wrangler', 'd1', 'export', 'jatimetri-db', '--remote', '--output', file],
     ]);
     expect(existsSync(file)).toBe(true);
   });
@@ -123,7 +123,7 @@ describe('purge-clerk-era gates', () => {
     const r2 = commands.filter((c) => c.includes('r2'));
     expect(r2.map((c) => c[5]).sort()).toEqual(['jatimetri-reports/user_2abcClerk/c1.pdf', 'jatimetri-reports/user_2abcClerk/c2.pdf']);
     const last = commands.at(-1)!;
-    expect(last.slice(0, 6)).toEqual(['bunx', 'wrangler', 'd1', 'execute', 'inner_potential_db', '--remote']);
+    expect(last.slice(0, 6)).toEqual(['bunx', 'wrangler', 'd1', 'execute', 'jatimetri-db', '--remote']);
     expect(last).toContain(CLERK_ERA.deletes.join(' '));
     for (const c of commands) expect(c).toContain('--remote');
     expect(commands.indexOf(last)).toBe(commands.length - 1);

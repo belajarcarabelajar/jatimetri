@@ -82,7 +82,7 @@ real login only completes on `jatimetri.belajarcarabelajar.com`; locally the app
 
 3. **Configure Cloudflare Services**
    The backend relies on Cloudflare D1 and R2. Ensure `wrangler.toml` is updated with your specific IDs and bindings:
-   - **D1 Database Binding:** `DB` (Database Name: `inner_potential_db`)
+   - **D1 Database Binding:** `DB` (Database Name: `jatimetri-db`)
    - **R2 Bucket Binding:** `REPORTS_BUCKET` (Bucket Name: `jatimetri-reports`)
 
 ## Development
@@ -135,7 +135,7 @@ Set `SKIP_BUILD=1` to deploy the existing `dist/`. CI does not deploy automatica
 The Worker is routed on the same host as the Pages site (`jatimetri.belajarcarabelajar.com/api/*` and
 `/masuk-bcb*`, see `routes` in `wrangler.toml`). First-time setup / after schema changes (run from the root, after `wrangler login`):
 ```bash
-bunx wrangler d1 execute inner_potential_db --remote --file worker/drizzle/0001_bcb_sso.sql
+bunx wrangler d1 execute jatimetri-db --remote --file worker/drizzle/0001_bcb_sso.sql
 bunx wrangler secret put BCB_SSO_RAHASIA   # same value as SSO_RAHASIA_JATIMETRI on the BCB apex
 ```
 Then deploy:
@@ -146,15 +146,15 @@ Deploy with `bun run worker:deploy` (plain `wrangler deploy`, no `--env`). In `w
 
 ### Purging Clerk-era data
 Before the BCB login (2026-11-06) `users.id` and `assessments.user_id` held Clerk user ids; those rows (ids without
-`@`) and their PDFs are unreachable. `scripts/purge-clerk-era.ts` removes them from `inner_potential_db` and
+`@`) and their PDFs are unreachable. `scripts/purge-clerk-era.ts` removes them from `jatimetri-db` and
 `jatimetri-reports`. It only touches production when told to, in three separate runs (from the root, after `wrangler login`):
 ```bash
 # 1. Export the production D1 to a new file (refuses to overwrite)
-bun scripts/purge-clerk-era.ts --apply-backup --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+bun scripts/purge-clerk-era.ts --apply-backup --backup-file "$HOME/backups/jatimetri/jatimetri-db-YYYYMMDD.sql"
 # 2. Dry run (default): counts and the exact statements and R2 keys, read from the backup; no command is run
-bun scripts/purge-clerk-era.ts --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+bun scripts/purge-clerk-era.ts --backup-file "$HOME/backups/jatimetri/jatimetri-db-YYYYMMDD.sql"
 # 3. Delete: R2 objects first, then the D1 rows (all with --remote)
-bun scripts/purge-clerk-era.ts --apply --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+bun scripts/purge-clerk-era.ts --apply --backup-file "$HOME/backups/jatimetri/jatimetri-db-YYYYMMDD.sql"
 ```
 `--apply` refuses to run without an existing, non-empty backup file. R2 keys are derived from the assessment rows in
 the backup (`<user_id>/<assessment id>.pdf`, the layout the Worker has always written), because wrangler cannot list
