@@ -143,3 +143,21 @@ Then deploy:
 bun run worker:deploy
 ```
 Deploy with `bun run worker:deploy` (plain `wrangler deploy`, no `--env`). In `wrangler.toml` the `routes` exist only at the top level, not under `[env.production]`, so `wrangler deploy --env production` would publish a separate Worker with no routes. Secrets follow the same rule: `wrangler secret put` without `--env` writes to the top-level Worker, which is the one serving the routes.
+
+### Purging Clerk-era data
+Before the BCB login (2026-11-06) `users.id` and `assessments.user_id` held Clerk user ids; those rows (ids without
+`@`) and their PDFs are unreachable. `scripts/purge-clerk-era.ts` removes them from `inner_potential_db` and
+`jatimetri-reports`. It only touches production when told to, in three separate runs (from the root, after `wrangler login`):
+```bash
+# 1. Export the production D1 to a new file (refuses to overwrite)
+bun scripts/purge-clerk-era.ts --apply-backup --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+# 2. Dry run (default): counts and the exact statements and R2 keys, read from the backup; no command is run
+bun scripts/purge-clerk-era.ts --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+# 3. Delete: R2 objects first, then the D1 rows (all with --remote)
+bun scripts/purge-clerk-era.ts --apply --backup-file "$HOME/backups/jatimetri/inner_potential_db-YYYYMMDD.sql"
+```
+`--apply` refuses to run without an existing, non-empty backup file. R2 keys are derived from the assessment rows in
+the backup (`<user_id>/<assessment id>.pdf`, the layout the Worker has always written), because wrangler cannot list
+a bucket: a Clerk-era PDF whose row was already deleted is not found. Keep the backup outside the repository (create the folder first); it holds user data.
+The backup is a full SQL export (schema and rows): restoring deleted rows means replaying only their `INSERT`
+statements from it. Deleted R2 PDFs cannot be restored.

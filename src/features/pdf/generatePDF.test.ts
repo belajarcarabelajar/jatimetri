@@ -70,7 +70,7 @@ vi.mock('jspdf', async () => {
 // Imports after mocks
 // ---------------------------------------------------------------------------
 import html2canvasMod from 'html2canvas';
-import { generatePDF } from './generatePDF';
+import { generatePDF, renderPDFBlob } from './generatePDF';
 
 const mockHtml2canvas = vi.mocked(html2canvasMod);
 
@@ -223,6 +223,17 @@ describe('generatePDF – style restoration', () => {
 
     await expect(generatePDF('style-restore-error', 'out.pdf')).rejects.toThrow('capture failed');
     expect(container.style.display).toBe('none');
+    expect(spies.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('renderPDFBlob – privasi-2: builds the PDF without downloading it', () => {
+  it('returns the Blob and never calls pdf.save()', async () => {
+    createPageContainer('blob-only', 2);
+    const result = await renderPDFBlob('blob-only');
+    expect(result).toBeInstanceOf(Blob);
+    expect(spies.output).toHaveBeenCalledWith('blob');
+    expect(spies.addImage).toHaveBeenCalledTimes(2);
     expect(spies.save).not.toHaveBeenCalled();
   });
 });
