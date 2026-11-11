@@ -6,7 +6,7 @@ import { RadarChartPlot } from "./components/RadarChartPlot";
 import { SpectrumSlider } from "./components/SpectrumSlider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Download, Save, ClipboardList, ArrowRight, History } from "lucide-react";
+import { Loader2, Download, Save, ClipboardList, ArrowRight } from "lucide-react";
 import { useSession } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { useTranslation } from "react-i18next";
@@ -33,8 +33,6 @@ export default function Dashboard() {
   const isSignedIn = sessionStatus === "signedIn";
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
-  const [storing, setStoring] = useState(false);
-  const storeInFlightRef = useRef(false);
   const saveInFlightRef = useRef(false);
   const saveAttemptRef = useRef<Promise<SaveOutcome> | null>(null);
   const navigate = useNavigate();
@@ -105,7 +103,7 @@ export default function Dashboard() {
     })
   });
 
-  // Simpan and Simpan ke riwayat share this one POST: whichever starts second reuses the first one's result.
+  // Repeated Simpan clicks share this one POST: a later click reuses the first one's result.
   // The outcome is a plain object because two callers cannot both read one Response body.
   const saveAttemptOnce = (): Promise<SaveOutcome> => {
     if (saveAttemptRef.current) return saveAttemptRef.current;
@@ -177,52 +175,7 @@ export default function Dashboard() {
     }
   };
 
-  // Simpan ke riwayat: the explicit opt-in that stores the PDF (it carries the user's name) on the server.
-  const handleStoreHistory = async () => {
-    if (storeInFlightRef.current) return;
-    storeInFlightRef.current = true;
-    setStoring(true);
-    try {
-      const outcome = await saveAttemptOnce();
-      if (!outcome.ok) {
-        if (outcome.status === 401) signIn('/dashboard');
-        else if (outcome.status !== 429) alert(`${t('fail_save')} Server Error: ${outcome.status} - ${outcome.detail}`);
-        return;
-      }
-      if (!outcome.assessmentId) {
-        alert(t('pdf_history_failed'));
-        return;
-      }
-      const { renderPDFBlob } = await import("../pdf/generatePDF");
-      const pdfBlob = await renderPDFBlob("pdf-container");
-      if (!pdfBlob) {
-        alert(t('fail_pdf'));
-        return;
-      }
-      const formData = new FormData();
-      formData.append("file", pdfBlob, "report.pdf");
-      formData.append("assessmentId", outcome.assessmentId);
-      // The attempt is already saved here, so a failed upload only loses the PDF
-      let uploaded = false;
-      try {
-        const resUpload = await apiFetch("/api/upload-pdf", { method: "POST", body: formData });
-        uploaded = resUpload.ok;
-        if (!uploaded) console.error(`PDF upload failed: ${resUpload.status}`);
-      } catch (e) {
-        console.error(e);
-      }
-      if (uploaded) navigate('/profile');
-      else alert(t('pdf_history_failed'));
-    } catch (e) {
-      console.error(e);
-      alert(`${t('network_error')} ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      storeInFlightRef.current = false;
-      setStoring(false);
-    }
-  };
-
-  const busy = saving || generatingPdf || storing;
+  const busy = saving || generatingPdf;
 
   if (isEmpty) {
     const hasStarted = answerKeys.length > 0;
@@ -275,12 +228,6 @@ export default function Dashboard() {
              {!historicalReport && isSignedIn && (
                <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={busy}>
                  <Save className="w-4 h-4 mr-2" /> {t('save_report')}
-               </Button>
-             )}
-             {!historicalReport && isSignedIn && (
-               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleStoreHistory} disabled={busy}>
-                 {storing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <History className="w-4 h-4 mr-2" />}
-                 {t('save_to_history')}
                </Button>
              )}
              {!historicalReport && sessionStatus === "signedOut" && (

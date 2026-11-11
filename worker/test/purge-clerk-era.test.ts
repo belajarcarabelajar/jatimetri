@@ -137,4 +137,21 @@ describe('purge-clerk-era gates', () => {
     expect(await purgeClerkEra(['--apply', '--backup-file', file], deps)).not.toBe(0);
     expect(commands.some((c) => c.includes('d1'))).toBe(false);
   });
+
+  it('--apply stops the R2 loop after the first failing key', async () => {
+    const file = backupOf(seed());
+    const commands: string[][] = [];
+    const deps: PurgeDeps = { exec: async (cmd) => (commands.push(cmd), cmd.includes('r2') ? 1 : 0), log: () => {} };
+    expect(await purgeClerkEra(['--apply', '--backup-file', file], deps)).not.toBe(0);
+    expect(commands.filter((c) => c.includes('r2'))).toHaveLength(1);
+  });
+
+  it('rejects a --backup-file value that starts with "--" and runs nothing', async () => {
+    const { deps, commands } = fakeDeps();
+    expect(await purgeClerkEra(['--backup-file', '--apply'], deps)).not.toBe(0);
+    expect(await purgeClerkEra(['--apply-backup', '--backup-file', '--apply'], deps)).not.toBe(0);
+    expect(await purgeClerkEra(['--backup-file'], deps)).not.toBe(0);
+    expect(commands).toEqual([]);
+    expect(existsSync('--apply')).toBe(false);
+  });
 });

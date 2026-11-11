@@ -56,6 +56,11 @@ export async function purgeClerkEra(argv: string[], deps: PurgeDeps): Promise<nu
   const applyBackup = argv.includes('--apply-backup');
   const i = argv.indexOf('--backup-file');
   const backupFile = i >= 0 ? argv[i + 1] : undefined;
+  // `--backup-file --apply` would otherwise treat the flag as the file name.
+  if (i >= 0 && (!backupFile || backupFile.startsWith('--'))) {
+    deps.log('--backup-file needs a path that does not start with "--".');
+    return 2;
+  }
 
   if (applyBackup) {
     if (!backupFile) {

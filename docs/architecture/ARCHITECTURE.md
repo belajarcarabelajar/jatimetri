@@ -81,8 +81,9 @@ The stage is currently not used in scoring.
   Recharts, `SpectrumSlider` per tendency) and a hidden `ReportPDF` layout.
 - `features/pdf/generatePDF.ts` rasterises that layout with html2canvas and builds
   the PDF with jsPDF (loaded on demand when the user downloads).
-- Signed-in users can save the result (`/api/save-attempt`); downloading a fresh
-  result also saves it and uploads the PDF to R2. Historical reports opened from
+- "Unduh PDF" stays on the device and sends nothing to the server.
+  Signed-in users can "Simpan Laporan", which saves only the result
+  (`/api/save-attempt`); the app uploads no PDF. Historical reports opened from
   `/profile` are passed through `sessionStorage` (`view-historical-report`) and are
   never re-saved.
 

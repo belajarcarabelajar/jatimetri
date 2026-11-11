@@ -1,7 +1,7 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-async function buildPDF(elementId: string) {
+export async function generatePDF(elementId: string, filename: string) {
   const element = document.getElementById(elementId);
   if (!element) {
     throw new Error(`generatePDF: PDF container element "#${elementId}" was not found in the document.`);
@@ -47,19 +47,6 @@ async function buildPDF(elementId: string) {
     element.style.display = originalDisplay;
   }
 
-  return pdf;
-}
-
-/** Builds the PDF, downloads it as `filename` on the user's device, and returns it as a Blob. */
-export async function generatePDF(elementId: string, filename: string) {
-  const pdf = await buildPDF(elementId);
-  if (!pdf) return;
   pdf.save(filename);
   return pdf.output("blob");
-}
-
-/** Builds the PDF and returns it as a Blob without downloading it. */
-export async function renderPDFBlob(elementId: string) {
-  const pdf = await buildPDF(elementId);
-  return pdf?.output("blob");
 }
