@@ -21,7 +21,6 @@
   "fail_save": "Failed to save report.",
   "network_error": "Network error occurred:",
   "save_limit_reached": "You have reached the saved-report limit. Delete old reports on the Profile page, then try saving again.",
-  "pdf_history_failed": "The PDF was downloaded, but it could not be stored in your history.",
   "nav_assessment": "Assessment",
   "nav_dashboard": "Dashboard",
   "nav_profile": "Profile",

@@ -103,7 +103,7 @@ export default function Dashboard() {
     })
   });
 
-  // Simpan and Unduh PDF share this one POST: whichever starts second reuses the first one's result.
+  // Repeated Simpan clicks share this one POST: a later click reuses the first one's result.
   // The outcome is a plain object because two callers cannot both read one Response body.
   const saveAttemptOnce = (): Promise<SaveOutcome> => {
     if (saveAttemptRef.current) return saveAttemptRef.current;
@@ -154,6 +154,7 @@ export default function Dashboard() {
     }
   };
 
+  // Unduh PDF stays on the device: it never calls the API (privasi-2).
   const handleDownloadPDF = async () => {
     setGeneratingPdf(true);
     try {
@@ -165,38 +166,7 @@ export default function Dashboard() {
       const fileName = historicalReport
         ? `Inner_Potential_Assessment_${fileDate}.pdf`
         : `Inner_Potential_Assessment_${safeUserName}_${fileDate}.pdf`;
-      const pdfBlob = await generatePDF("pdf-container", fileName);
-
-      // Only a fresh result is saved; re-downloading a historical report must not create a new attempt
-      if (isSignedIn && pdfBlob && !historicalReport) {
-        // 1. Save the result once to get assessmentId; later downloads and Simpan reuse it
-        const outcome = await saveAttemptOnce();
-        if (!outcome.ok && outcome.status !== 429) {
-          console.error(`Saving attempt failed: ${outcome.status}`);
-        }
-        const assessmentId = outcome.ok ? outcome.assessmentId : null;
-
-        if (assessmentId) {
-           // 2. Upload PDF to R2 (the upload overwrites the same key)
-           const formData = new FormData();
-           formData.append("file", pdfBlob, "report.pdf");
-           formData.append("assessmentId", assessmentId);
-
-           // The file is already on the user's device here, so a failed upload must not read as a failed PDF
-           let uploaded = false;
-           try {
-             const resUpload = await apiFetch("/api/upload-pdf", {
-               method: "POST",
-               body: formData
-             });
-             uploaded = resUpload.ok;
-             if (!uploaded) console.error(`PDF upload failed: ${resUpload.status}`);
-           } catch (e) {
-             console.error(e);
-           }
-           if (!uploaded) alert(t('pdf_history_failed'));
-        }
-      }
+      await generatePDF("pdf-container", fileName);
     } catch (e) {
       console.error(e);
       alert(t('fail_pdf'));
@@ -204,6 +174,8 @@ export default function Dashboard() {
       setGeneratingPdf(false);
     }
   };
+
+  const busy = saving || generatingPdf;
 
   if (isEmpty) {
     const hasStarted = answerKeys.length > 0;
@@ -254,7 +226,7 @@ export default function Dashboard() {
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
              {!historicalReport && isSignedIn && (
-               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={saving || generatingPdf}>
+               <Button variant="outline" className="flex-1 md:flex-none" onClick={handleSave} disabled={busy}>
                  <Save className="w-4 h-4 mr-2" /> {t('save_report')}
                </Button>
              )}
@@ -264,7 +236,7 @@ export default function Dashboard() {
                  <Save className="w-4 h-4 mr-2" /> {t('login_save')}
                </Button>
              )}
-             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={generatingPdf || saving}>
+             <Button className="flex-1 md:flex-none" onClick={handleDownloadPDF} disabled={busy}>
                {generatingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} 
                {t('download_pdf')}
              </Button>

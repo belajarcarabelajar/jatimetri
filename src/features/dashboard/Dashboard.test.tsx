@@ -154,12 +154,12 @@ describe('Dashboard – PDF download', () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.mocked(generatePDF).mockClear();
+    session.status = 'signedIn';
     vi.mocked(useAssessmentStore).mockReturnValue({
       answers: { 'Q-01': 5 },
       stage: 'adult',
       userName: 'Test User',
     });
-    // Signed-in users also save + upload after download; keep that off the network
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ assessmentId: 'a1' }) }));
   });
 
@@ -174,10 +174,15 @@ describe('Dashboard – PDF download', () => {
     await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
     expect(vi.mocked(generatePDF).mock.calls[0][0]).toBe('pdf-container');
     expect(vi.mocked(generatePDF).mock.calls[0][1]).toMatch(/^Inner_Potential_Assessment_Test User_\d{4}-\d{2}-\d{2}\.pdf$/);
-    // Fresh result → save attempt, then upload the generated PDF
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(fetch).mock.calls[0][0]).toMatch(/\/api\/save-attempt$/);
-    expect(vi.mocked(fetch).mock.calls[1][0]).toMatch(/\/api\/upload-pdf$/);
+  });
+
+  it('privasi-2: signed in, Unduh PDF only downloads and sends nothing to the server', async () => {
+    renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
+
+    await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeEnabled());
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('alerts the user when PDF generation fails', async () => {
@@ -301,33 +306,6 @@ describe('audit-1109 one attempt per result and historical PDF', () => {
     vi.unstubAllGlobals();
   });
 
-  async function downloadOnce(expectedUploads: number) {
-    fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
-    await waitFor(() => expect(callsTo('/api/upload-pdf')).toHaveLength(expectedUploads));
-    // The button is disabled while a download runs
-    await waitFor(() => expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeEnabled());
-  }
-
-  it('downloading the PDF twice saves one attempt and uploads the PDF again under the same id', async () => {
-    renderLoaded();
-    await downloadOnce(1);
-    await downloadOnce(2);
-
-    expect(callsTo('/api/save-attempt')).toHaveLength(1);
-    const secondUpload = callsTo('/api/upload-pdf')[1][1] as RequestInit;
-    expect((secondUpload.body as FormData).get('assessmentId')).toBe('a1');
-  });
-
-  it('saving after a download does not create a second attempt', async () => {
-    renderLoaded();
-    await downloadOnce(1);
-
-    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
-    expect(callsTo('/api/save-attempt')).toHaveLength(1);
-  });
-
   it('a double click on save sends one request', async () => {
     let finish: (value: unknown) => void = () => {};
     vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finish = resolve; })));
@@ -392,9 +370,8 @@ describe('audit-1109 one attempt per result and historical PDF', () => {
   });
 });
 
-describe('audit-1109 review: shared save, attempt limit, failed PDF upload', () => {
+describe('audit-1109 review: shared save and attempt limit', () => {
   const LIMIT_MESSAGE = 'Batas laporan tersimpan sudah tercapai. Hapus laporan lama di halaman Profil, lalu coba simpan lagi.';
-  const HISTORY_MESSAGE = 'PDF sudah terunduh, tetapi tidak dapat disimpan ke riwayat Anda.';
 
   const callsTo = (path: string) =>
     vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(path));
@@ -404,10 +381,8 @@ describe('audit-1109 review: shared save, attempt limit, failed PDF upload', () 
   let alertSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
-  /** Stub fetch per endpoint; every save-attempt call gets the same response promise. */
-  function stubApi(save: Promise<unknown>, upload: unknown = { ok: true, status: 200 }) {
-    vi.stubGlobal('fetch', vi.fn((url: unknown) =>
-      String(url).endsWith('/api/save-attempt') ? save : Promise.resolve(upload)));
+  function stubApi(save: Promise<unknown>) {
+    vi.stubGlobal('fetch', vi.fn(() => save));
   }
 
   function deferredSave() {
@@ -444,65 +419,6 @@ describe('audit-1109 review: shared save, attempt limit, failed PDF upload', () 
     vi.unstubAllGlobals();
   });
 
-  async function expectOneSharedAttempt(finish: (value: unknown) => void) {
-    await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
-    await act(async () => { finish(savedResponse); });
-
-    await waitFor(() => expect(callsTo('/api/upload-pdf')).toHaveLength(1));
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
-    expect(callsTo('/api/save-attempt')).toHaveLength(1);
-    const upload = callsTo('/api/upload-pdf')[0][1] as RequestInit;
-    expect((upload.body as FormData).get('assessmentId')).toBe('a1');
-    await waitFor(() => expect(downloadButton()).toBeEnabled());
-  }
-
-  // A disabled button ignores clicks, so the overlap is driven by two clicks before React re-renders
-  it('Unduh PDF then Simpan in the same tick send one save-attempt', async () => {
-    const save = deferredSave();
-    stubApi(save.promise);
-    renderLoaded();
-
-    const download = downloadButton();
-    const simpan = saveButton();
-    act(() => {
-      download.click();
-      simpan.click();
-    });
-
-    await expectOneSharedAttempt(save.finish);
-  });
-
-  it('Simpan then Unduh PDF in the same tick send one save-attempt', async () => {
-    const save = deferredSave();
-    stubApi(save.promise);
-    renderLoaded();
-
-    const download = downloadButton();
-    const simpan = saveButton();
-    act(() => {
-      simpan.click();
-      download.click();
-    });
-
-    await expectOneSharedAttempt(save.finish);
-  });
-
-  it('disables Simpan while the save-attempt of a download is pending', async () => {
-    const save = deferredSave();
-    stubApi(save.promise);
-    renderLoaded();
-
-    fireEvent.click(downloadButton());
-    await waitFor(() => expect(callsTo('/api/save-attempt')).toHaveLength(1));
-
-    expect(saveButton()).toBeDisabled();
-    fireEvent.click(saveButton());
-    await act(async () => { save.finish(savedResponse); });
-    await waitFor(() => expect(saveButton()).toBeEnabled());
-    expect(callsTo('/api/save-attempt')).toHaveLength(1);
-    expect(mockNavigate).not.toHaveBeenCalled();
-  });
-
   it('disables Unduh PDF while a save runs', async () => {
     const save = deferredSave();
     stubApi(save.promise);
@@ -529,27 +445,42 @@ describe('audit-1109 review: shared save, attempt limit, failed PDF upload', () 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
   });
+});
 
-  it('Unduh PDF at the saved-report limit (429) shows the same limit message and uploads nothing', async () => {
-    stubApi(Promise.resolve(limitResponse));
-    renderLoaded();
+describe('privasi-2: the dashboard never uploads a PDF', () => {
+  const callsTo = (path: string) =>
+    vi.mocked(fetch).mock.calls.filter(([url]) => String(url).endsWith(path));
 
-    fireEvent.click(downloadButton());
-
-    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(LIMIT_MESSAGE));
-    await waitFor(() => expect(downloadButton()).toBeEnabled());
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(callsTo('/api/upload-pdf')).toHaveLength(0);
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockNavigate.mockClear();
+    vi.mocked(generatePDF).mockClear();
+    session.status = 'signedIn';
+    vi.mocked(useAssessmentStore).mockReturnValue({
+      answers: { 'Q-01': 5 },
+      stage: 'adult',
+      userName: 'Test User',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ assessmentId: 'a1' }) }));
   });
 
-  it('tells the user when the downloaded PDF could not be stored (413)', async () => {
-    stubApi(Promise.resolve(savedResponse), { ok: false, status: 413, text: async () => '{"error":"File too large"}' });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('offers no "Simpan ke riwayat" button when signed in', () => {
     renderLoaded();
+    expect(screen.getByRole('button', { name: /Simpan Laporan/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Simpan ke riwayat/ })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(downloadButton());
+  it('Simpan Laporan saves the result only and uploads no PDF', async () => {
+    renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: /Simpan Laporan/ }));
 
-    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(HISTORY_MESSAGE));
-    await waitFor(() => expect(downloadButton()).toBeEnabled());
-    expect(alertSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/profile'));
+    expect(callsTo('/api/save-attempt')).toHaveLength(1);
+    expect(callsTo('/api/upload-pdf')).toHaveLength(0);
+    expect(generatePDF).not.toHaveBeenCalled();
   });
 });
