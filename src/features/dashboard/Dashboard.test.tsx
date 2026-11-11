@@ -173,7 +173,7 @@ describe('Dashboard – PDF download', () => {
 
     await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
     expect(vi.mocked(generatePDF).mock.calls[0][0]).toBe('pdf-container');
-    expect(vi.mocked(generatePDF).mock.calls[0][1]).toMatch(/^Inner_Potential_Assessment_Test User_\d{4}-\d{2}-\d{2}\.pdf$/);
+    expect(vi.mocked(generatePDF).mock.calls[0][1]).toMatch(/^Jatimetri_Test User_\d{4}-\d{2}-\d{2}\.pdf$/);
   });
 
   it('privasi-2: signed in, Unduh PDF only downloads and sends nothing to the server', async () => {
@@ -355,7 +355,7 @@ describe('audit-1109 one attempt per result and historical PDF', () => {
     fireEvent.click(screen.getByRole('button', { name: /Unduh PDF/ }));
 
     await waitFor(() => expect(generatePDF).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(generatePDF).mock.calls[0][1]).toBe('Inner_Potential_Assessment_2025-01-15.pdf');
+    expect(vi.mocked(generatePDF).mock.calls[0][1]).toBe('Jatimetri_2025-01-15.pdf');
     await waitFor(() => expect(screen.getByRole('button', { name: /Unduh PDF/ })).toBeEnabled());
     expect(fetch).not.toHaveBeenCalled();
     alertSpy.mockRestore();
