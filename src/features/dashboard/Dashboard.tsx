@@ -214,7 +214,7 @@ export default function Dashboard() {
     <div className="flex-1 bg-surface p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-8">
         
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-background p-6 rounded-2xl shadow-sm border border-border">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-background p-6 rounded-2xl shadow-xs border border-border">
           <div>
             <h1 className="text-3xl font-bold text-primary">{t('report_title')}</h1>
             <p className="text-muted-foreground mt-1 capitalize">

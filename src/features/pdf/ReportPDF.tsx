@@ -57,7 +57,7 @@ export const ReportPDF = forwardRef<HTMLDivElement, ReportPDFProps>(({ result, u
         <h2 className="text-4xl font-bold text-primary border-b pb-4">Ringkasan Kecenderungan</h2>
         <div className="flex-1 flex flex-col items-center justify-center">
           <h3 className="text-2xl font-semibold mb-8 text-slate-700">Pola Indikasi Dominan: <span className="text-primary">{result.dominancePattern}</span></h3>
-          <div className="w-full max-w-xl aspect-square bg-slate-50 rounded-full p-8 shadow-sm border border-slate-100">
+          <div className="w-full max-w-xl aspect-square bg-slate-50 rounded-full p-8 shadow-xs border border-slate-100">
              <RadarChartPlot data={result.radarData} />
           </div>
           <div className="mt-12 text-xl leading-relaxed text-slate-700 text-center max-w-2xl">
@@ -74,7 +74,7 @@ export const ReportPDF = forwardRef<HTMLDivElement, ReportPDFProps>(({ result, u
         <h2 className="text-4xl font-bold text-primary border-b pb-4">Indikasi Potensi & Tantangan</h2>
         <div className="grid grid-cols-2 gap-8 mt-8">
            {result.tendencies.map((t, idx) => (
-             <div key={idx} className="border border-slate-200 p-8 rounded-xl bg-slate-50 shadow-sm flex flex-col">
+             <div key={idx} className="border border-slate-200 p-8 rounded-xl bg-slate-50 shadow-xs flex flex-col">
                <h3 className="text-2xl font-bold capitalize mb-6 text-slate-800 border-b pb-4">{t.label}</h3>
                <div className="mb-6 flex-1">
                  <p className="font-semibold text-emerald-600 mb-2 flex items-center gap-2">✦ Kecenderungan Potensi:</p>

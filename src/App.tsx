@@ -37,7 +37,7 @@ function Home() {
       <div className="absolute top-[20%] right-[10%] w-[30vw] h-[30vw] bg-accent/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '4s' }} />
 
       <div className="text-center space-y-6 relative z-10 px-4 max-w-4xl mx-auto animate-in fade-in-up duration-700">
-        <div className="inline-flex items-center justify-center px-4 py-1.5 mb-4 text-sm font-medium rounded-full bg-secondary/20 text-primary border border-secondary/30 backdrop-blur-sm">
+        <div className="inline-flex items-center justify-center px-4 py-1.5 mb-4 text-sm font-medium rounded-full bg-secondary/20 text-primary border border-secondary/30 backdrop-blur-xs">
           ✨ Jelajahi Dirimu
         </div>
         <h1 className="text-5xl md:text-7xl font-bold text-foreground font-heading tracking-tight leading-tight">
