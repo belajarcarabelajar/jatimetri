@@ -1,7 +1,7 @@
 /**
  * Unit tests for src/features/pdf/generatePDF.ts
  *
- * Strategy: mock html2canvas and jsPDF to remove canvas/browser dependencies.
+ * Strategy: mock html2canvas-pro and jsPDF to remove canvas/browser dependencies.
  * We test generatePDF()'s own control flow only.
  *
  * Key pattern for jsPDF mocking:
@@ -40,7 +40,7 @@ type PdfSpyHost = typeof globalThis & {
 // ---------------------------------------------------------------------------
 // Mocks (hoisted – no outer-scope variable references allowed in factory)
 // ---------------------------------------------------------------------------
-vi.mock('html2canvas', () => ({
+vi.mock('html2canvas-pro', () => ({
   default: vi.fn(async () => ({
     toDataURL: () => 'data:image/jpeg;base64,FAKE',
   })),
@@ -69,7 +69,7 @@ vi.mock('jspdf', async () => {
 // ---------------------------------------------------------------------------
 // Imports after mocks
 // ---------------------------------------------------------------------------
-import html2canvasMod from 'html2canvas';
+import html2canvasMod from 'html2canvas-pro';
 import { generatePDF } from './generatePDF';
 
 const mockHtml2canvas = vi.mocked(html2canvasMod);

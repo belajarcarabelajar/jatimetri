@@ -60,7 +60,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext, headin
                 key={idx} 
                 variant={currentAnswer === opt ? "default" : "outline"}
                 aria-pressed={currentAnswer === opt}
-                className={`justify-start h-16 text-lg text-left transition-all duration-300 rounded-2xl ${currentAnswer === opt ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
+                className={`justify-start h-16 text-lg text-left transition-all duration-300 rounded-2xl ${currentAnswer === opt ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-xs hover:-translate-y-0.5 active:scale-[0.98]'}`}
                 onClick={() => { onAnswer(opt); setTimeout(() => onNext?.(), 300); }}
               >
                 {opt}
@@ -118,7 +118,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext, headin
                   key={val} 
                   variant={currentAnswer === val ? "default" : "outline"}
                 aria-pressed={currentAnswer === val}
-                  className={`justify-start h-auto py-5 text-left whitespace-normal transition-all duration-300 rounded-2xl ${currentAnswer === val ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
+                  className={`justify-start h-auto py-5 text-left whitespace-normal transition-all duration-300 rounded-2xl ${currentAnswer === val ? 'shadow-md scale-[1.01]' : 'hover:border-primary hover:shadow-xs hover:-translate-y-0.5 active:scale-[0.98]'}`}
                   onClick={() => { onAnswer(val); setTimeout(() => onNext?.(), 300); }}
                 >
                   <span className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 font-bold transition-colors ${currentAnswer === val ? 'bg-background/20 text-primary-foreground' : 'bg-primary/10 text-primary'}`}>{val}</span>
@@ -161,7 +161,7 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext, headin
                 key={idx} 
                 variant={currentAnswer === opt ? "default" : "outline"}
                 aria-pressed={currentAnswer === opt}
-                className={`h-auto min-h-[6rem] text-lg whitespace-normal p-6 flex items-center text-left transition-all duration-300 rounded-3xl ${currentAnswer === opt ? 'shadow-md scale-[1.02]' : 'hover:border-primary hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.98]'}`}
+                className={`h-auto min-h-24 text-lg whitespace-normal p-6 flex items-center text-left transition-all duration-300 rounded-3xl ${currentAnswer === opt ? 'shadow-md scale-[1.02]' : 'hover:border-primary hover:shadow-xs hover:-translate-y-0.5 active:scale-[0.98]'}`}
                 onClick={() => { onAnswer(opt); setTimeout(() => onNext?.(), 300); }}
               >
                 {opt}
@@ -173,15 +173,15 @@ export function QuestionCard({ question, currentAnswer, onAnswer, onNext, headin
   };
 
   return (
-    <Card className="w-full max-w-3xl mx-auto shadow-premium border-border/40 rounded-[2rem] animate-in fade-in-up duration-700 bg-card/95 backdrop-blur-sm">
+    <Card className="w-full max-w-3xl mx-auto shadow-premium border-border/40 rounded-4xl animate-in fade-in-up duration-700 bg-card/95 backdrop-blur-xs">
       <CardHeader className="pb-8">
         <div className="flex items-center gap-2 mb-4">
-          <span className="px-4 py-1.5 text-xs font-bold tracking-wider uppercase bg-secondary/20 text-primary border border-secondary/30 rounded-full shadow-sm">
+          <span className="px-4 py-1.5 text-xs font-bold tracking-wider uppercase bg-secondary/20 text-primary border border-secondary/30 rounded-full shadow-xs">
             {question.scope}
           </span>
         </div>
         {/* We expect Assessment.tsx to inject the correct prompt string into question.prompt before passing down */}
-        <CardTitle ref={headingRef} tabIndex={-1} className="focus:outline-none text-3xl md:text-4xl leading-snug text-foreground font-heading tracking-tight">{question.prompt}</CardTitle>
+        <CardTitle ref={headingRef} tabIndex={-1} className="focus:outline-hidden text-3xl md:text-4xl leading-snug text-foreground font-heading tracking-tight">{question.prompt}</CardTitle>
         {question.helperText && (
           <CardDescription className="text-lg mt-3 text-muted-foreground">{question.helperText}</CardDescription>
         )}

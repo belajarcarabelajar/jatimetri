@@ -33,9 +33,9 @@ export function MainLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background relative">
-      <header className="w-full px-6 py-4 flex items-center justify-between z-20 border-b border-border/30 bg-background/80 backdrop-blur-md sticky top-0 shadow-sm">
+      <header className="w-full px-6 py-4 flex items-center justify-between z-20 border-b border-border/30 bg-background/80 backdrop-blur-md sticky top-0 shadow-xs">
         <Link to="/" className="font-heading font-bold text-xl text-primary hover:opacity-80 transition-opacity py-2 flex items-center gap-2">
-          <span className="bg-primary text-primary-foreground w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-sm">IP</span>
+          <span className="bg-primary text-primary-foreground w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-xs">IP</span>
           Jatimetri
         </Link>
 
@@ -54,7 +54,7 @@ export function MainLayout() {
                 {t('nav_profile')}
               </Link>
               <div role="group" aria-label={t('account')} className="flex items-center gap-2 pl-2 border-l border-border/50">
-                <span className="text-xs text-muted-foreground max-w-[12rem] truncate" title={email}>
+                <span className="text-xs text-muted-foreground max-w-48 truncate" title={email}>
                   {email}
                 </span>
                 <button

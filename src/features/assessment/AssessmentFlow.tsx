@@ -147,7 +147,7 @@ export function AssessmentFlow() {
     <div className="flex flex-col h-screen bg-surface relative overflow-hidden">
       <h1 className="sr-only">Assessment Kepribadian Jatimetri</h1>
       {/* Top Bar with Progress */}
-      <div className="w-full bg-background p-4 shadow-sm z-10 border-b border-border/50">
+      <div className="w-full bg-background p-4 shadow-xs z-10 border-b border-border/50">
         <div className="flex items-center justify-between mb-3 max-w-5xl mx-auto">
           <span className="text-sm font-medium text-muted-foreground">Progress: {Math.round(progress)}%</span>
           <div className="flex gap-2">
@@ -192,11 +192,11 @@ export function AssessmentFlow() {
         
         {/* Desktop Controls */}
         <div className="absolute bottom-10 left-6 right-6 flex justify-between">
-          <Button variant="outline" onClick={handlePrev} disabled={slideIndex === 0} className="shadow-sm">
+          <Button variant="outline" onClick={handlePrev} disabled={slideIndex === 0} className="shadow-xs">
             <ArrowLeft className="mr-2 h-4 w-4" /> Sebelumnya
           </Button>
           {slideIndex === questions.length - 1 && isAnswered() ? (
-             <Button onClick={handleFinish} className="shadow-sm bg-success hover:bg-success/90">
+             <Button onClick={handleFinish} className="shadow-xs bg-success hover:bg-success/90">
                Selesai <ArrowRight className="ml-2 h-4 w-4" />
              </Button>
           ) : (
@@ -205,7 +205,7 @@ export function AssessmentFlow() {
                 variant={isAnswered() ? "default" : "secondary"} 
                 onClick={handleNext} 
                 disabled={!isAnswered()}
-                className="shadow-sm"
+                className="shadow-xs"
               >
                 Selanjutnya <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -240,7 +240,7 @@ export function AssessmentFlow() {
                 data-slide
                 inert={!isCurrent}
                 aria-hidden={isCurrent ? undefined : true}
-                className="h-full w-full flex-shrink-0 flex items-center justify-center p-4 overflow-y-auto"
+                className="h-full w-full shrink-0 flex items-center justify-center p-4 overflow-y-auto"
               >
                 <div className="w-full my-auto py-8">
                   <QuestionCard 
