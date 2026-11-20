@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.18"
+    "hono": "^4.13.19"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.11"
